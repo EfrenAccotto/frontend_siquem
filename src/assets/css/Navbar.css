@@ -1,0 +1,35 @@
+
+.navbar-blue {
+  background: var(--primary-color); /* color principal del tema */
+  color: var(--primary-color-text); /* texto contrastante */
+  transition: background 0.3s ease;
+}
+
+/* degradado sutil en el fondo */
+.navbar-blue {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--primary-color) 95%, #000 5%),
+    var(--primary-color)
+  );
+}
+
+/* íconos */
+.navbar-blue .pi {
+  color: var(--primary-color-text);
+}
+
+/* botones planos */
+.navbar-blue .p-button.p-button-text {
+  color: var(--primary-color-text);
+}
+
+/* efecto hover */
+.navbar-blue .p-button.p-button-text:hover {
+  background-color: color-mix(in srgb, var(--primary-color-text) 10%, transparent);
+}
+
+/* sombra suave */
+.navbar-blue {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
