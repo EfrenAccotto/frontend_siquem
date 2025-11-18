@@ -4,14 +4,14 @@ import ProductoRouter from './productos/ProductoRouter';
 import VentaRouter from './ventas/VentaRouter';
 import PedidoRouter from './pedidos/PedidoRouter';
 import InicioRouter from "./inicio/InicioRouter";
-import NavBar from '../components/layout/NavBar';
+import Navbar from '../components/layout/Navbar';
 import Sidebar from '../components/layout/Sidebar';
 
 const AppRouter = () => {
   return (
     <Router>
-      {/* Navbar y Sidebar se renderizan SIEMPRE */}
-      <NavBar />
+  {/* Navbar y Sidebar se renderizan SIEMPRE */}
+  <Navbar />
       <div className="flex">
         <Sidebar />
         

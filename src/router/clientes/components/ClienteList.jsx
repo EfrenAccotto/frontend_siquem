@@ -7,7 +7,7 @@ import { confirmDialog } from 'primereact/confirmdialog';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import { useState } from 'react';
 
-const ClienteList = ({ clientes, loading, onEdit, onDelete, onSearch }) => {
+const ClienteList = ({ clientes, loading, onEdit, onDelete, onSearch, header: customHeader, selection = null, onSelectionChange = null }) => {
   const [globalFilter, setGlobalFilter] = useState('');
 
   const confirmarEliminacion = (cliente) => {
@@ -43,23 +43,26 @@ const ClienteList = ({ clientes, loading, onEdit, onDelete, onSearch }) => {
     );
   };
 
-  const header = (
+  const defaultHeader = (
     <div className="flex justify-content-between align-items-center">
       <h2 className="m-0">Lista de Clientes</h2>
       <span className="p-input-icon-left">
-        <i className="pi pi-search" />
+        {/* Ajuste: aplicamos padding-left al InputText para dejar espacio al icono */}
+        <i className="pi pi-search ml-2" />
         <InputText
           value={globalFilter}
           onChange={(e) => {
             setGlobalFilter(e.target.value);
-            onSearch(e.target.value);
+            onSearch && onSearch(e.target.value);
           }}
           placeholder="Buscar cliente..."
-          className="w-full md:w-auto"
+          className="w-full md:w-auto pl-5"
         />
       </span>
     </div>
   );
+
+  const header = customHeader || defaultHeader;
 
   return (
     <>
@@ -74,6 +77,9 @@ const ClienteList = ({ clientes, loading, onEdit, onDelete, onSearch }) => {
         emptyMessage="No se encontraron clientes"
         className="p-datatable-sm"
         stripedRows
+        selectionMode="single"
+        selection={selection}
+        onSelectionChange={(e) => onSelectionChange && onSelectionChange(e.value)}
       >
         <Column field="id" header="ID" sortable style={{ width: '5%' }} />
         <Column field="nombreCompleto" header="Nombre Completo" sortable style={{ width: '20%' }} />

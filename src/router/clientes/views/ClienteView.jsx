@@ -5,12 +5,14 @@ import { Toast } from 'primereact/toast';
 import { useRef } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ClienteList from '../components/ClienteList';
+import ActionButtons from '@/components/layout/ActionButtons';
 import ClienteForm from '../components/ClienteForm';
 
 const ClienteView = () => {
   const toast = useRef(null);
   const [showDialog, setShowDialog] = useState(false);
   const [clienteEditando, setClienteEditando] = useState(null );
+  const [selectedCliente, setSelectedCliente] = useState(null);
 
   const {
     clientes,
@@ -100,12 +102,6 @@ const ClienteView = () => {
       
       <div className="flex justify-content-between align-items-center mb-4">
         <h1 className="text-3xl font-bold m-0">Gestión de Clientes</h1>
-        <Button
-          label="Nuevo Cliente"
-          icon="pi pi-plus"
-          onClick={handleNuevoCliente}
-          className="p-button-success"
-        />
       </div>
 
       <ClienteList
@@ -114,6 +110,18 @@ const ClienteView = () => {
         onEdit={handleEditarCliente}
         onDelete={handleEliminarCliente}
         onSearch={handleBuscarCliente}
+        selection={selectedCliente}
+        onSelectionChange={setSelectedCliente}
+        header={<ActionButtons
+          onSearch={handleBuscarCliente}
+          onCreate={handleNuevoCliente}
+          showEdit={true}
+          showDelete={true}
+          editDisabled={!selectedCliente}
+          deleteDisabled={!selectedCliente}
+          onEdit={() => selectedCliente && handleEditarCliente(selectedCliente)}
+          onDelete={() => selectedCliente && handleEliminarCliente(selectedCliente.id)}
+        />}
       />
 
       <ClienteForm

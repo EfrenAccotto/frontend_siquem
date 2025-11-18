@@ -1,4 +1,5 @@
 import TableComponent from '../../../components/layout/TableComponent';
+import ActionButtons from '../../../components/layout/ActionButtons';
 import { useEffect, useState } from 'react';
 import ProductoService from '../services/ProductoService';
 
@@ -65,6 +66,7 @@ const Columns = [
 
 const ProductoView = () => {
   const [productos, setProductos] = useState([]);
+  const [selectedProducto, setSelectedProducto] = useState(null);
 
   const useEffect = (() => {
   try {
@@ -84,12 +86,36 @@ const ProductoView = () => {
   }
 }, []);
 
+  // El manejo de CRUD lo realiza la tabla (ActionButtons dentro del header),
+  // por eso eliminamos el botón "Nuevo Producto" que estaba duplicado.
+
   return (
-  <div className="bg-white p-6 rounded shadow">
-    <TableComponent visible={true} data={productos} columns={Columns} />
-  </div>
+    <div className="producto-view h-full">
+
+      <div className="flex justify-content-between align-items-center mb-4">
+        <h1 className="text-3xl font-bold m-0">Gestión de Productos</h1>
+      </div>
+
+      <div className="bg-white p-6 rounded shadow h-full">
+        <TableComponent
+          visible={true}
+          data={productos}
+          columns={Columns}
+          selection={selectedProducto}
+          onSelectionChange={setSelectedProducto}
+          header={<ActionButtons
+            showEdit={true}
+            showDelete={true}
+            editDisabled={!selectedProducto}
+            deleteDisabled={!selectedProducto}
+            onEdit={() => selectedProducto && console.log('editar', selectedProducto)}
+            onDelete={() => selectedProducto && console.log('eliminar', selectedProducto)}
+          />}
+        />
+      </div>
+    </div>
   )
 
-;}
+}
 
 export default ProductoView; 

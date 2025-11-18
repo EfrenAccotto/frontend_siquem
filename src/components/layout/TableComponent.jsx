@@ -4,11 +4,18 @@ import { Column } from 'primereact/column';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import ActionButtons from './ActionButtons';
 
-const ClienteList = ({ data, loading,columns }) => {
+const TableComponent = ({
+  data = [],
+  loading = false,
+  columns = [],
+  header: customHeader,
+  selection = null,
+  onSelectionChange = null,
+}) => {
 
-  const header = (
-   <ActionButtons/>
-  );
+  const defaultHeader = <ActionButtons />;
+
+  const header = customHeader || defaultHeader;
 
   return (
     <>
@@ -21,10 +28,12 @@ const ClienteList = ({ data, loading,columns }) => {
         paginator
         rows={10}
         rowsPerPageOptions={[5, 10, 25, 50]}
-        emptyMessage="No se encontraron clientes"
+        emptyMessage="No se encontraron registros"
         className="p-datatable-sm"
         stripedRows
-        // onRowSelect={}
+        selectionMode="single"
+        selection={selection}
+        onSelectionChange={(e) => onSelectionChange && onSelectionChange(e.value)}
       >
         {columns.map((column) => (
           <Column
@@ -40,4 +49,4 @@ const ClienteList = ({ data, loading,columns }) => {
   );
 };
 
-export default ClienteList;
+export default TableComponent;
