@@ -4,7 +4,7 @@ import { Column } from 'primereact/column';
 import { ConfirmDialog } from 'primereact/confirmdialog';
 import ActionButtons from './ActionButtons';
 
-const ClienteList = ({ clientes, loading }) => {
+const ClienteList = ({ data, loading,columns }) => {
 
   const header = (
    <ActionButtons/>
@@ -14,8 +14,9 @@ const ClienteList = ({ clientes, loading }) => {
     <>
       <ConfirmDialog />
       <DataTable
-        value={clientes}
+        value={data}
         header={header}
+        columns={columns}
         loading={loading}
         paginator
         rows={10}
@@ -25,13 +26,15 @@ const ClienteList = ({ clientes, loading }) => {
         stripedRows
         // onRowSelect={}
       >
-        <Column field="id" header="ID" sortable style={{ width: '5%' }} />
-        <Column field="nombreCompleto" header="Nombre Completo" sortable style={{ width: '20%' }} />
-        <Column field="email" header="Email" sortable style={{ width: '20%' }} />
-        <Column field="telefono" header="Teléfono" sortable style={{ width: '15%' }} />
-        <Column field="ciudad" header="Ciudad" sortable style={{ width: '12%' }} />
-        <Column field="dniCuit" header="DNI/CUIT" sortable style={{ width: '15%' }} />
-        <Column field="fechaRegistro" header="Fecha Registro" sortable style={{ width: '13%' }} />
+        {columns.map((column) => (
+          <Column
+            key={column.field}
+            field={column.field}
+            header={column.header}
+            sortable
+            style={column.style}
+          />
+        ))}
       </DataTable>
     </>
   );

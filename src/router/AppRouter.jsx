@@ -14,7 +14,7 @@ const AppRouter = () => {
       <NavBar />
       <div className="flex">
         <Sidebar />
-
+        
         {/* Contenedor principal de las rutas */}
         <main className="flex-1 p-4">
           <Routes>
