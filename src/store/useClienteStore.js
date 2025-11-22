@@ -1,5 +1,6 @@
 // src/modules/clientes/store/useClienteStore.js
 import { create } from 'zustand';
+import ClienteService from '../router/clientes/services/ClienteService';
 
 const useClienteStore = create((set, get) => ({
   // Estado
@@ -12,7 +13,7 @@ const useClienteStore = create((set, get) => ({
   fetchClientes: async () => {
     set({ loading: true, error: null });
     try {
-      const response = await clienteService.getAll();
+      const response = await ClienteService.getAll();
       set({ clientes: response.data, loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -22,7 +23,7 @@ const useClienteStore = create((set, get) => ({
   fetchClienteById: async (id) => {
     set({ loading: true, error: null });
     try {
-      const response = await clienteService.getById(id);
+      const response = await ClienteService.getById(id);
       set({ clienteActual: response.data, loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
@@ -32,7 +33,7 @@ const useClienteStore = create((set, get) => ({
   createCliente: async (clienteData) => {
     set({ loading: true, error: null });
     try {
-      const response = await clienteService.create(clienteData);
+      const response = await ClienteService.create(clienteData);
       set((state) => ({
         clientes: [...state.clientes, response.data],
         loading: false
@@ -47,9 +48,9 @@ const useClienteStore = create((set, get) => ({
   updateCliente: async (id, clienteData) => {
     set({ loading: true, error: null });
     try {
-      const response = await clienteService.update(id, clienteData);
+      const response = await ClienteService.update(id, clienteData);
       set((state) => ({
-        clientes: state.clientes.map(c => 
+        clientes: state.clientes.map(c =>
           c.id === id ? response.data : c
         ),
         loading: false
@@ -64,7 +65,7 @@ const useClienteStore = create((set, get) => ({
   deleteCliente: async (id) => {
     set({ loading: true, error: null });
     try {
-      await clienteService.delete(id);
+      await ClienteService.delete(id);
       set((state) => ({
         clientes: state.clientes.filter(c => c.id !== id),
         loading: false
@@ -78,7 +79,7 @@ const useClienteStore = create((set, get) => ({
   searchClientes: async (query) => {
     set({ loading: true, error: null });
     try {
-      const response = await clienteService.search(query);
+      const response = await ClienteService.search(query);
       set({ clientes: response.data, loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });

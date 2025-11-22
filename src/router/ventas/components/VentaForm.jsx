@@ -1,0 +1,183 @@
+import { Dialog } from 'primereact/dialog';
+import { Dropdown } from 'primereact/dropdown';
+import { Calendar } from 'primereact/calendar';
+import { Button } from 'primereact/button';
+import { InputNumber } from 'primereact/inputnumber';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { useState, useEffect } from 'react';
+import useClienteStore from '@/store/useClienteStore';
+import ProductoService from '@/router/productos/services/ProductoService';
+
+const VentaForm = ({ visible, onHide, onSave, loading }) => {
+    const { clientes, fetchClientes } = useClienteStore();
+    const [productosDisponibles, setProductosDisponibles] = useState([]);
+
+    const [formData, setFormData] = useState({
+        cliente: null,
+        fecha: new Date(),
+        items: [],
+        total: 0
+    });
+
+    const [selectedProducto, setSelectedProducto] = useState(null);
+    const [cantidad, setCantidad] = useState(1);
+
+    useEffect(() => {
+        if (visible) {
+            fetchClientes();
+            loadProductos();
+            setFormData({
+                cliente: null,
+                fecha: new Date(),
+                items: [],
+                total: 0
+            });
+            setSelectedProducto(null);
+            setCantidad(1);
+        }
+    }, [visible, fetchClientes]);
+
+    const loadProductos = async () => {
+        try {
+            const response = await ProductoService.getAll();
+            if (response.success) {
+                setProductosDisponibles(response.data);
+            }
+        } catch (error) {
+            console.error("Error loading products", error);
+        }
+    };
+
+    const handleAddItem = () => {
+        if (!selectedProducto || cantidad <= 0) return;
+
+        const newItem = {
+            producto: selectedProducto,
+            cantidad: cantidad,
+            subtotal: selectedProducto.price * cantidad
+        };
+
+        setFormData(prev => {
+            const newItems = [...prev.items, newItem];
+            const newTotal = newItems.reduce((acc, item) => acc + item.subtotal, 0);
+            return {
+                ...prev,
+                items: newItems,
+                total: newTotal
+            };
+        });
+
+        setSelectedProducto(null);
+        setCantidad(1);
+    };
+
+    const handleRemoveItem = (rowData) => {
+        setFormData(prev => {
+            const newItems = prev.items.filter(item => item !== rowData);
+            const newTotal = newItems.reduce((acc, item) => acc + item.subtotal, 0);
+            return {
+                ...prev,
+                items: newItems,
+                total: newTotal
+            };
+        });
+    };
+
+    const handleSubmit = () => {
+        if (!formData.cliente || formData.items.length === 0) return;
+        onSave(formData);
+    };
+
+    const footer = (
+        <div className="flex justify-content-end gap-2">
+            <Button label="Cancelar" icon="pi pi-times" onClick={onHide} className="p-button-text" />
+            <Button
+                label="Guardar Venta"
+                icon="pi pi-check"
+                onClick={handleSubmit}
+                disabled={!formData.cliente || formData.items.length === 0}
+                loading={loading}
+            />
+        </div>
+    );
+
+    return (
+        <Dialog
+            visible={visible}
+            style={{ width: '800px' }}
+            header="Nueva Venta"
+            modal
+            className="p-fluid"
+            footer={footer}
+            onHide={onHide}
+        >
+            <div className="grid">
+                <div className="col-12 md:col-6">
+                    <div className="field">
+                        <label className="font-bold">Cliente</label>
+                        <Dropdown
+                            value={formData.cliente}
+                            options={clientes}
+                            onChange={(e) => setFormData({ ...formData, cliente: e.value })}
+                            optionLabel="nombreCompleto"
+                            placeholder="Seleccione un cliente"
+                            filter
+                        />
+                    </div>
+                </div>
+                <div className="col-12 md:col-6">
+                    <div className="field">
+                        <label className="font-bold">Fecha</label>
+                        <Calendar value={formData.fecha} onChange={(e) => setFormData({ ...formData, fecha: e.value })} showIcon />
+                    </div>
+                </div>
+
+                <div className="col-12">
+                    <div className="p-3 border-1 surface-border border-round surface-ground">
+                        <h4 className="m-0 mb-3">Agregar Producto</h4>
+                        <div className="formgrid grid">
+                            <div className="field col-12 md:col-6">
+                                <Dropdown
+                                    value={selectedProducto}
+                                    options={productosDisponibles}
+                                    onChange={(e) => setSelectedProducto(e.value)}
+                                    optionLabel="name"
+                                    placeholder="Seleccione producto"
+                                    filter
+                                />
+                            </div>
+                            <div className="field col-12 md:col-3">
+                                <InputNumber
+                                    value={cantidad}
+                                    onValueChange={(e) => setCantidad(e.value)}
+                                    showButtons
+                                    min={1}
+                                    placeholder="Cantidad"
+                                />
+                            </div>
+                            <div className="field col-12 md:col-3">
+                                <Button label="Agregar" icon="pi pi-plus" onClick={handleAddItem} disabled={!selectedProducto} />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="col-12">
+                    <DataTable value={formData.items} stripedRows size="small">
+                        <Column field="producto.name" header="Producto"></Column>
+                        <Column field="cantidad" header="Cant." style={{ width: '10%' }}></Column>
+                        <Column field="producto.price" header="Precio Unit." body={(rowData) => `$${rowData.producto.price}`}></Column>
+                        <Column field="subtotal" header="Subtotal" body={(rowData) => `$${rowData.subtotal}`}></Column>
+                        <Column body={(rowData) => <Button icon="pi pi-trash" className="p-button-danger p-button-text p-button-sm" onClick={() => handleRemoveItem(rowData)} />} style={{ width: '5%' }}></Column>
+                    </DataTable>
+                    <div className="flex justify-content-end mt-3">
+                        <h3 className="m-0">Total: ${formData.total}</h3>
+                    </div>
+                </div>
+            </div>
+        </Dialog>
+    );
+};
+
+export default VentaForm;
