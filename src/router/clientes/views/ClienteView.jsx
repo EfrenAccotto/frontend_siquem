@@ -1,128 +1,132 @@
-// src/modules/clientes/views/ClienteView.jsx
-import { useEffect, useState } from 'react';
-import { Button } from 'primereact/button';
-import { Toast } from 'primereact/toast';
-import { useRef } from 'react';
-import useClienteStore from '@/store/useClienteStore';
-import ClienteList from '../components/ClienteList';
-import ActionButtons from '@/components/layout/ActionButtons';
+import TableComponent from '../../../components/layout/TableComponent';
+import ActionButtons from '../../../components/layout/ActionButtons';
+import { useEffect, useState, useRef } from 'react';
+import ClienteService from '../services/ClienteService';
 import ClienteForm from '../components/ClienteForm';
+import { Toast } from 'primereact/toast';
+
+const Columns = [
+  { field: 'first_name', header: 'Nombre', style: { width: '25%' } },
+  { field: 'last_name', header: 'Apellido', style: { width: '25%' } },
+  { field: 'phone_number', header: 'Teléfono', style: { width: '20%' } },
+  { field: 'dni', header: 'Email', style: { width: '25%' } },
+];
 
 const ClienteView = () => {
-  const toast = useRef(null);
-  const [showDialog, setShowDialog] = useState(false);
-  const [clienteEditando, setClienteEditando] = useState(null );
+  const [clientes, setClientes] = useState([]);
   const [selectedCliente, setSelectedCliente] = useState(null);
+  const [showDialog, setShowDialog] = useState(false);
+  const [clienteEditando, setClienteEditando] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const toast = useRef(null);
 
-  const {
-    clientes,
-    loading,
-    fetchClientes,
-    createCliente,
-    updateCliente,
-    deleteCliente,
-    searchClientes
-  } = useClienteStore();
+  const fetchClientes = async () => {
+    setLoading(true);
+    try {
+      const response = await ClienteService.getAll();
+      if (response.success) {
+        setClientes(response.data.results || response.data || []);
+      } else {
+        console.error('Error al obtener clientes:', response.error);
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar clientes', life: 3000 });
+      }
+    } catch (error) {
+      console.error('Error inesperado:', error);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchClientes();
-  }, [fetchClientes]);
+  }, []);
 
-  const handleNuevoCliente = () => {
+  const handleNuevo = () => {
     setClienteEditando(null);
     setShowDialog(true);
   };
 
-  const handleEditarCliente = (cliente) => {
-    setClienteEditando(cliente);
-    setShowDialog(true);
+  const handleEditar = () => {
+    if (selectedCliente) {
+      setClienteEditando(selectedCliente);
+      setShowDialog(true);
+    }
   };
 
-  const handleGuardarCliente = async (clienteData) => {
+  const handleGuardar = async (formData) => {
     try {
       if (clienteEditando) {
-        await updateCliente(clienteEditando.id, clienteData);
-        toast.current?.show({
-          severity: 'success',
-          summary: 'Éxito',
-          detail: 'Cliente actualizado correctamente',
-          life: 3000
-        });
+        const response = await ClienteService.update(clienteEditando.id, formData);
+        if (response.success) {
+          const updatedClientes = clientes.map(c => c.id === clienteEditando.id ? { ...c, ...formData } : c);
+          setClientes(updatedClientes);
+          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente actualizado', life: 3000 });
+        } else {
+          throw new Error(response.error);
+        }
       } else {
-        await createCliente(clienteData);
-        toast.current?.show({
-          severity: 'success',
-          summary: 'Éxito',
-          detail: 'Cliente creado correctamente',
-          life: 3000
-        });
+        const response = await ClienteService.create(formData);
+        if (response.success) {
+          setClientes([...clientes, response.data]);
+          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente creado', life: 3000 });
+        } else {
+          throw new Error(response.error);
+        }
       }
+
       setShowDialog(false);
       setClienteEditando(null);
     } catch (error) {
-      toast.current?.show({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Error al guardar el cliente',
-        life: 3000
-      });
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
     }
   };
 
-  const handleEliminarCliente = async (id) => {
-    try {
-      await deleteCliente(id);
-      toast.current?.show({
-        severity: 'success',
-        summary: 'Éxito',
-        detail: 'Cliente eliminado correctamente',
-        life: 3000
-      });
-    } catch (error) {
-      toast.current?.show({
-        severity: 'error',
-        summary: 'Error',
-        detail: error.message || 'Error al eliminar el cliente',
-        life: 3000
-      });
-    }
-  };
-
-  const handleBuscarCliente = async (query) => {
-    if (query.trim() === '') {
-      fetchClientes();
-    } else {
-      searchClientes(query);
+  const handleEliminar = async () => {
+    if (selectedCliente) {
+      try {
+        const response = await ClienteService.delete(selectedCliente.id);
+        if (response.success) {
+          const updatedClientes = clientes.filter(c => c.id !== selectedCliente.id);
+          setClientes(updatedClientes);
+          setSelectedCliente(null);
+          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente eliminado', life: 3000 });
+        } else {
+          throw new Error(response.error);
+        }
+      } catch (error) {
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+      }
     }
   };
 
   return (
-    <div className="cliente-view">
+    <div className="cliente-view h-full">
       <Toast ref={toast} />
-      
+
       <div className="flex justify-content-between align-items-center mb-4">
         <h1 className="text-3xl font-bold m-0">Gestión de Clientes</h1>
       </div>
 
-      <ClienteList
-        clientes={clientes}
-        loading={loading}
-        onEdit={handleEditarCliente}
-        onDelete={handleEliminarCliente}
-        onSearch={handleBuscarCliente}
-        selection={selectedCliente}
-        onSelectionChange={setSelectedCliente}
-        header={<ActionButtons
-          onSearch={handleBuscarCliente}
-          onCreate={handleNuevoCliente}
-          showEdit={true}
-          showDelete={true}
-          editDisabled={!selectedCliente}
-          deleteDisabled={!selectedCliente}
-          onEdit={() => selectedCliente && handleEditarCliente(selectedCliente)}
-          onDelete={() => selectedCliente && handleEliminarCliente(selectedCliente.id)}
-        />}
-      />
+      <div className="bg-white p-6 rounded shadow h-full">
+        <TableComponent
+          data={clientes}
+          loading={loading}
+          columns={Columns}
+          selection={selectedCliente}
+          onSelectionChange={setSelectedCliente}
+          header={<ActionButtons
+            showCreate={true}
+            showEdit={true}
+            showDelete={true}
+            editDisabled={!selectedCliente}
+            deleteDisabled={!selectedCliente}
+            onCreate={handleNuevo}
+            onEdit={handleEditar}
+            onDelete={handleEliminar}
+          />}
+        />
+      </div>
 
       <ClienteForm
         visible={showDialog}
@@ -131,8 +135,7 @@ const ClienteView = () => {
           setShowDialog(false);
           setClienteEditando(null);
         }}
-        onSave={handleGuardarCliente}
-        loading={loading}
+        onSave={handleGuardar}
       />
     </div>
   );

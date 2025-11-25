@@ -1,8 +1,8 @@
 import axios from 'axios';
 
 // Configuración específica para productos
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-const PRODUCTOS_ENDPOINT = `${BASE_URL}/products`;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const PRODUCTOS_ENDPOINT = `${BASE_URL}/product/`;
 
 /**
  * Servicio para operaciones CRUD de Productos
@@ -16,6 +16,7 @@ class ProductoService {
   static async getAll(params = {}) {
     try {
       const response = await axios.get(PRODUCTOS_ENDPOINT, { params });
+      console.log(response);
       return {
         success: true,
         data: response.data,

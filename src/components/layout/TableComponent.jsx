@@ -16,12 +16,11 @@ const TableComponent = ({
   const defaultHeader = <ActionButtons />;
 
   const header = customHeader || defaultHeader;
-
   return (
     <>
       <ConfirmDialog />
       <DataTable
-        value={data}
+        value={Array.isArray(data) ? data : []}
         header={header}
         columns={columns}
         loading={loading}
@@ -31,6 +30,8 @@ const TableComponent = ({
         emptyMessage="No se encontraron registros"
         className="p-datatable-sm"
         stripedRows
+        scrollable={true}
+        scrollHeight="550px"
         selectionMode="single"
         selection={selection}
         onSelectionChange={(e) => onSelectionChange && onSelectionChange(e.value)}

@@ -24,7 +24,7 @@ const ProductoView = () => {
     try {
       const response = await ProductoService.getAll();
       if (response.success) {
-        setProductos(response.data);
+        setProductos(response.data.results || []);
       } else {
         console.error('Error al obtener productos:', response.error);
         toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
