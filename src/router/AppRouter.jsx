@@ -6,7 +6,6 @@ import PedidoRouter from './pedidos/PedidoRouter';
 import InicioRouter from "./inicio/InicioRouter";
 import Navbar from '../components/layout/Navbar';
 import Sidebar from '../components/layout/Sidebar';
-import Footer from '../components/layout/Footer';
 import '../assets/css/footer.css';
 
 const AppRouter = () => {
@@ -29,8 +28,6 @@ const AppRouter = () => {
         </main>
       </div>
 
-      {/* Footer al final de todas las páginas */}
-      <Footer />
     </Router>
   );
 };

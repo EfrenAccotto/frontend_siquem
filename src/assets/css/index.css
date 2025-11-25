@@ -13,13 +13,15 @@
 /* Raíz sin margen y con altura limitada. Definimos la variable --navbar-height
    para que `main` pueda restarla y no quede oculto por la barra superior. */
 :root {
-  --navbar-height: 4rem; /* coincide con la clase h-4rem usada en Navbar.jsx */
+  --navbar-height: 5.5rem; /* py-3 (1.5rem) + contenido text-xl + text-sm (~4rem) */
 }
 
 html, body, #root {
   height: 100vh;
   max-height: 100vh;
   margin: 0;
+  padding: 0;
+  overflow: hidden;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
@@ -28,7 +30,7 @@ html, body, #root {
 main {
   height: calc(100vh - var(--navbar-height));
   max-height: calc(100vh - var(--navbar-height));
-  overflow: auto;
+  overflow: hidden;
   /* No forzamos padding aquí: los componentes internos (p-4, etc.) controlan el espaciado */
 }
 
