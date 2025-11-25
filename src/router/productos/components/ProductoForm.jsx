@@ -10,8 +10,7 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
     name: '',
     description: '',
     price: 0,
-    stock: 0,
-    reserve_stock: 0
+    stock: 0
   });
 
   const [errors, setErrors] = useState({});
@@ -22,16 +21,14 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
         name: producto.name || '',
         description: producto.description || '',
         price: producto.price || 0,
-        stock: producto.stock || 0,
-        reserve_stock: producto.reserve_stock || 0
+        stock: producto.stock || 0
       });
     } else {
       setFormData({
         name: '',
         description: '',
         price: 0,
-        stock: 0,
-        reserve_stock: 0
+        stock: 0
       });
     }
     setErrors({});
@@ -117,6 +114,7 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
                 className={errors.name ? 'p-invalid' : ''}
+                placeholder="Ej: Huevos de gallina"
               />
               {errors.name && (
                 <small className="p-error">{errors.name}</small>
@@ -135,11 +133,12 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
                 onChange={(e) => handleChange('description', e.target.value)}
                 rows={3}
                 autoResize
+                placeholder="Descripción opcional del producto"
               />
             </div>
           </div>
 
-          <div className="col-12 md:col-4">
+          <div className="col-12 md:col-6">
             <div className="field">
               <label htmlFor="price" className="font-bold">
                 Precio *
@@ -159,10 +158,10 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
             </div>
           </div>
 
-          <div className="col-12 md:col-4">
+          <div className="col-12 md:col-6">
             <div className="field">
               <label htmlFor="stock" className="font-bold">
-                Stock *
+                Stock Inicial *
               </label>
               <InputNumber
                 id="stock"
@@ -172,26 +171,22 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
                 min={0}
                 className={errors.stock ? 'p-invalid' : ''}
               />
-               {errors.stock && (
+              {errors.stock && (
                 <small className="p-error">{errors.stock}</small>
               )}
             </div>
           </div>
 
-          <div className="col-12 md:col-4">
-            <div className="field">
-              <label htmlFor="reserve_stock" className="font-bold">
-                Stock de Reserva
-              </label>
-              <InputNumber
-                id="reserve_stock"
-                value={formData.reserve_stock}
-                onValueChange={(e) => handleChange('reserve_stock', e.value)}
-                showButtons
-                min={0}
-              />
+          {producto && (
+            <div className="col-12">
+              <div className="p-3 surface-100 border-round">
+                <p className="m-0 text-sm">
+                  <i className="pi pi-info-circle mr-2"></i>
+                  <strong>Nota:</strong> El stock reservado se actualiza automáticamente según los pedidos activos.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </form>
     </Dialog>

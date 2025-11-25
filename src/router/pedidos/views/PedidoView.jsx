@@ -1,25 +1,19 @@
+import { useRef, useState, useEffect } from 'react';
+import { Toast } from 'primereact/toast';
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
-import { useEffect, useState, useRef } from 'react';
 import PedidoService from '../services/PedidoService';
 import PedidoForm from '../components/PedidoForm';
-import { Toast } from 'primereact/toast';
-
-const Columns = [
-  { field: 'customer.first_name', header: 'Cliente', style: { width: '25%' } },
-  { field: 'date', header: 'Fecha', style: { width: '15%' } },
-  { field: 'shipping_address', header: 'Total', style: { width: '15%' }, body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.total_amount || 0) },
-  { field: 'state', header: 'Estado', style: { width: '20%' }, body: (rowData) => new Date(rowData.created_at).toLocaleDateString('es-ES') },
-  { field: 'delivery_date', header: 'Fecha Entrega', style: { width: '15%' }, body: (rowData) => rowData.delivery_date ? new Date(rowData.delivery_date).toLocaleDateString('es-ES') : 'No definida' },
-];
+import DetallePedidoDialog from '../components/DetallePedidoDialog';
 
 const PedidoView = () => {
-  const [pedidos, setPedidos] = useState([]);
-  const [selectedPedido, setSelectedPedido] = useState(null);
+  const toast = useRef(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [showDetalleDialog, setShowDetalleDialog] = useState(false);
+  const [selectedPedido, setSelectedPedido] = useState(null);
+  const [pedidos, setPedidos] = useState([]);
   const [pedidoEditando, setPedidoEditando] = useState(null);
   const [loading, setLoading] = useState(false);
-  const toast = useRef(null);
 
   const fetchPedidos = async () => {
     setLoading(true);
@@ -55,6 +49,12 @@ const PedidoView = () => {
     }
   };
 
+  const handleVerDetalle = () => {
+    if (selectedPedido) {
+      setShowDetalleDialog(true);
+    }
+  };
+
   const handleGuardar = async (formData) => {
     try {
       if (pedidoEditando) {
@@ -83,6 +83,21 @@ const PedidoView = () => {
     }
   };
 
+  const handleGuardarDetalle = (pedidoActualizado) => {
+    const pedidosActualizados = pedidos.map(p =>
+      p.id === pedidoActualizado.id ? pedidoActualizado : p
+    );
+    setPedidos(pedidosActualizados);
+    setSelectedPedido(pedidoActualizado);
+
+    toast.current?.show({
+      severity: 'success',
+      summary: 'Éxito',
+      detail: 'Detalle de pedido actualizado correctamente',
+      life: 3000
+    });
+  };
+
   const handleEliminar = async () => {
     if (selectedPedido) {
       try {
@@ -101,6 +116,40 @@ const PedidoView = () => {
     }
   };
 
+  // Formatear dirección
+  const direccionTemplate = (rowData) => {
+    return rowData.direccionEnvio || '-';
+  };
+
+  // Formatear estado con badge de color
+  const estadoTemplate = (rowData) => {
+    const estadoClasses = {
+      'Pendiente': 'p-badge-warning',
+      'Completado': 'p-badge-success',
+      'Cancelado': 'p-badge-danger'
+    };
+    const className = estadoClasses[rowData.estado] || 'p-badge-info';
+    return <span className={`p-badge ${className}`}>{rowData.estado}</span>;
+  };
+
+  const columns = [
+    { field: 'id', header: 'ID', style: { width: '8%' } },
+    { field: 'cliente', header: 'Cliente', style: { width: '25%' } },
+    {
+      field: 'direccionEnvio',
+      header: 'Dirección de Envío',
+      body: direccionTemplate,
+      style: { width: '27%' }
+    },
+    { field: 'fechaPedido', header: 'Fecha Pedido', style: { width: '15%' } },
+    {
+      field: 'estado',
+      header: 'Estado',
+      body: estadoTemplate,
+      style: { width: '15%' }
+    }
+  ];
+
   return (
     <div className="pedido-view h-full">
       <Toast ref={toast} />
@@ -109,25 +158,27 @@ const PedidoView = () => {
         <h1 className="text-3xl font-bold m-0">Gestión de Pedidos</h1>
       </div>
 
-      <div className="bg-white p-6 rounded shadow h-full">
-        <TableComponent
-          data={pedidos}
-          loading={loading}
-          columns={Columns}
-          selection={selectedPedido}
-          onSelectionChange={setSelectedPedido}
-          header={<ActionButtons
-            showCreate={true}
-            showEdit={true}
-            showDelete={true}
-            editDisabled={!selectedPedido}
-            deleteDisabled={!selectedPedido}
-            onCreate={handleNuevo}
-            onEdit={handleEditar}
-            onDelete={handleEliminar}
-          />}
-        />
-      </div>
+      <TableComponent
+        data={pedidos}
+        loading={loading}
+        columns={columns}
+        header={<ActionButtons
+          showCreate={true}
+          showEdit={true}
+          showDelete={true}
+          showDetail={true}
+          showExport={false}
+          editDisabled={!selectedPedido}
+          deleteDisabled={!selectedPedido}
+          detailDisabled={!selectedPedido}
+          onCreate={handleNuevo}
+          onEdit={handleEditar}
+          onDelete={handleEliminar}
+          onDetail={handleVerDetalle}
+        />}
+        selection={selectedPedido}
+        onSelectionChange={setSelectedPedido}
+      />
 
       <PedidoForm
         visible={showDialog}
@@ -137,6 +188,13 @@ const PedidoView = () => {
           setPedidoEditando(null);
         }}
         onSave={handleGuardar}
+      />
+
+      <DetallePedidoDialog
+        visible={showDetalleDialog}
+        pedido={selectedPedido}
+        onHide={() => setShowDetalleDialog(false)}
+        onSave={handleGuardarDetalle}
       />
     </div>
   );

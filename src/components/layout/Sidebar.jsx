@@ -3,10 +3,10 @@ import { Sidebar } from 'primereact/sidebar';
 import { Menubar } from 'primereact/menubar';
 import { Button } from 'primereact/button';
 import { useNavigate } from 'react-router-dom';
-import 'primereact/resources/themes/lara-light-indigo/theme.css'; 
-import 'primereact/resources/primereact.min.css'; 
-import 'primeicons/primeicons.css'; 
-import 'primeflex/primeflex.css'; 
+import 'primereact/resources/themes/lara-light-indigo/theme.css';
+import 'primereact/resources/primereact.min.css';
+import 'primeicons/primeicons.css';
+import 'primeflex/primeflex.css';
 
 const AppSidebar = () => {
   const [visible, setVisible] = useState(false);
@@ -38,10 +38,15 @@ const AppSidebar = () => {
       label: 'Pedidos',
       icon: 'pi pi-list',
       command: () => navigate('/pedidos')
+    },
+    {
+      label: 'Reportes',
+      icon: 'pi pi-file-export',
+      command: () => navigate('/reportes')
     }
   ];
 
-  
+
   const startContent = (
     <Button
       icon="pi pi-bars"

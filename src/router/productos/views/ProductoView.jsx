@@ -6,11 +6,17 @@ import ProductoForm from '../components/ProductoForm';
 import { Toast } from 'primereact/toast';
 
 const Columns = [
-  { field: 'name', header: 'Nombre', style: { width: '25%' } },
-  { field: 'description', header: 'Descripción', style: { width: '35%' } },
+  { field: 'name', header: 'Nombre', style: { width: '20%' } },
+  { field: 'description', header: 'Descripción', style: { width: '30%' } },
   { field: 'price', header: 'Precio', style: { width: '15%' }, body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.price) },
-  { field: 'stock', header: 'Stock', style: { width: '12%' } },
-  { field: 'reserve_stock', header: 'Stock Reservado', style: { width: '13%' } },
+  { field: 'stock', header: 'Stock Total', style: { width: '10%' } },
+  { field: 'reserve_stock', header: 'Stock Reservado', style: { width: '12%' } },
+  {
+    field: 'stock_disponible',
+    header: 'Stock Disponible',
+    style: { width: '13%' },
+    body: (rowData) => (rowData.stock - rowData.reserve_stock)
+  },
 ];
 
 const ProductoView = () => {
@@ -20,23 +26,31 @@ const ProductoView = () => {
   const [productoEditando, setProductoEditando] = useState(null);
   const toast = useRef(null);
 
-  const fetchProductos = async () => {
-    try {
-      const response = await ProductoService.getAll();
-      if (response.success) {
-        setProductos(response.data.results || []);
-      } else {
-        console.error('Error al obtener productos:', response.error);
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
-      }
-    } catch (error) {
-      console.error('Error inesperado:', error);
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-    }
-  };
-
   useEffect(() => {
-    fetchProductos();
+    let mounted = true;
+
+    const loadProductos = async () => {
+      try {
+        const response = await ProductoService.getAll();
+        if (mounted && response.success) {
+          // Manejar ambos formatos de respuesta del backend
+          setProductos(response.data.results || response.data || []);
+        } else if (mounted && !response.success) {
+          console.error('Error al obtener productos:', response.error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
+        }
+      } catch (error) {
+        if (mounted) {
+          console.error('Error inesperado:', error);
+        }
+      }
+    };
+
+    loadProductos();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleNuevo = () => {
@@ -52,18 +66,14 @@ const ProductoView = () => {
   };
 
   const handleGuardar = async (formData) => {
-    // Aquí iría la lógica para guardar en el backend
-    // Por ahora simulamos una actualización local
     console.log('Guardando producto:', formData);
 
     if (productoEditando) {
-      // Update logic mock
       const updatedProductos = productos.map(p => p.id === productoEditando.id ? { ...p, ...formData } : p);
       setProductos(updatedProductos);
       toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Producto actualizado', life: 3000 });
     } else {
-      // Create logic mock
-      const newProduct = { ...formData, id: Date.now() }; // Mock ID
+      const newProduct = { ...formData, id: Date.now() };
       setProductos([...productos, newProduct]);
       toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Producto creado', life: 3000 });
     }
@@ -74,7 +84,6 @@ const ProductoView = () => {
 
   const handleEliminar = () => {
     if (selectedProducto) {
-      // Delete logic mock
       const updatedProductos = productos.filter(p => p.id !== selectedProducto.id);
       setProductos(updatedProductos);
       setSelectedProducto(null);
@@ -90,25 +99,24 @@ const ProductoView = () => {
         <h1 className="text-3xl font-bold m-0">Gestión de Productos</h1>
       </div>
 
-      <div className="bg-white p-6 rounded shadow h-full">
-        <TableComponent
-          visible={true}
-          data={productos}
-          columns={Columns}
-          selection={selectedProducto}
-          onSelectionChange={setSelectedProducto}
-          header={<ActionButtons
-            showCreate={true}
-            showEdit={true}
-            showDelete={true}
-            editDisabled={!selectedProducto}
-            deleteDisabled={!selectedProducto}
-            onCreate={handleNuevo}
-            onEdit={handleEditar}
-            onDelete={handleEliminar}
-          />}
-        />
-      </div>
+      <TableComponent
+        visible={true}
+        data={productos}
+        columns={Columns}
+        selection={selectedProducto}
+        onSelectionChange={setSelectedProducto}
+        header={<ActionButtons
+          showCreate={true}
+          showEdit={true}
+          showDelete={true}
+          showExport={false}
+          editDisabled={!selectedProducto}
+          deleteDisabled={!selectedProducto}
+          onCreate={handleNuevo}
+          onEdit={handleEditar}
+          onDelete={handleEliminar}
+        />}
+      />
 
       <ProductoForm
         visible={showDialog}

@@ -43,11 +43,21 @@ const ClienteList = ({ clientes, loading, onEdit, onDelete, onSearch, header: cu
     );
   };
 
+  // Formatear dirección según modelo: "Calle Número (Localidad, Provincia)"
+  const direccionTemplate = (rowData) => {
+    if (rowData.direccion) {
+      const { calle, numero, localidad } = rowData.direccion;
+      const loc = localidad?.nombre || '';
+      const prov = localidad?.provincia?.nombre || '';
+      return `${calle} ${numero} (${loc}, ${prov})`;
+    }
+    return '-';
+  };
+
   const defaultHeader = (
     <div className="flex justify-content-between align-items-center">
       <h2 className="m-0">Lista de Clientes</h2>
       <span className="p-input-icon-left">
-        {/* Ajuste: aplicamos padding-left al InputText para dejar espacio al icono */}
         <i className="pi pi-search ml-2" />
         <InputText
           value={globalFilter}
@@ -81,17 +91,21 @@ const ClienteList = ({ clientes, loading, onEdit, onDelete, onSearch, header: cu
         selection={selection}
         onSelectionChange={(e) => onSelectionChange && onSelectionChange(e.value)}
       >
-        <Column field="id" header="ID" sortable style={{ width: '5%' }} />
         <Column field="nombreCompleto" header="Nombre Completo" sortable style={{ width: '20%' }} />
-        <Column field="email" header="Email" sortable style={{ width: '20%' }} />
         <Column field="telefono" header="Teléfono" sortable style={{ width: '15%' }} />
-        <Column field="ciudad" header="Ciudad" sortable style={{ width: '12%' }} />
-        <Column field="dniCuit" header="DNI/CUIT" sortable style={{ width: '15%' }} />
-        <Column field="fechaRegistro" header="Fecha Registro" sortable style={{ width: '13%' }} />
-        <Column 
-          body={accionesTemplate} 
-          header="Acciones" 
-          style={{ width: '10%' }}
+        <Column
+          field="direccion"
+          header="Dirección"
+          body={direccionTemplate}
+          sortable
+          style={{ width: '25%' }}
+        />
+        <Column field="email" header="Email" sortable style={{ width: '20%' }} />
+        <Column field="empresa" header="Empresa" sortable style={{ width: '12%' }} />
+        <Column
+          body={accionesTemplate}
+          header="Acciones"
+          style={{ width: '8%' }}
           exportable={false}
         />
       </DataTable>

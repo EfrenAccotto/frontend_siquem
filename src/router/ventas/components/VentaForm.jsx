@@ -16,12 +16,21 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
     const [formData, setFormData] = useState({
         cliente: null,
         fecha: new Date(),
+        formaPago: 'efectivo',
         items: [],
-        total: 0
+        total: 0,
+        detalles: []
     });
 
     const [selectedProducto, setSelectedProducto] = useState(null);
     const [cantidad, setCantidad] = useState(1);
+
+    // Formas de pago según el modelo
+    const formasPago = [
+        { label: 'Efectivo', value: 'efectivo' },
+        { label: 'Transferencia', value: 'transferencia' },
+        { label: 'Tarjeta', value: 'tarjeta' }
+    ];
 
     useEffect(() => {
         if (visible) {
@@ -30,8 +39,10 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
             setFormData({
                 cliente: null,
                 fecha: new Date(),
+                formaPago: 'efectivo',
                 items: [],
-                total: 0
+                total: 0,
+                detalles: []
             });
             setSelectedProducto(null);
             setCantidad(1);
@@ -53,8 +64,10 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
         if (!selectedProducto || cantidad <= 0) return;
 
         const newItem = {
+            id: Date.now(),
             producto: selectedProducto,
             cantidad: cantidad,
+            precioUnitario: selectedProducto.price,
             subtotal: selectedProducto.price * cantidad
         };
 
@@ -64,6 +77,7 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
             return {
                 ...prev,
                 items: newItems,
+                detalles: newItems,
                 total: newTotal
             };
         });
@@ -74,19 +88,36 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
 
     const handleRemoveItem = (rowData) => {
         setFormData(prev => {
-            const newItems = prev.items.filter(item => item !== rowData);
+            const newItems = prev.items.filter(item => item.id !== rowData.id);
             const newTotal = newItems.reduce((acc, item) => acc + item.subtotal, 0);
             return {
                 ...prev,
                 items: newItems,
+                detalles: newItems,
                 total: newTotal
             };
         });
     };
 
     const handleSubmit = () => {
-        if (!formData.cliente || formData.items.length === 0) return;
+        if (!formData.cliente && formData.items.length === 0) {
+            // Se permite venta sin cliente según el modelo (opcional)
+            return;
+        }
+
+        if (formData.items.length === 0) {
+            return;
+        }
+
         onSave(formData);
+    };
+
+    const precioTemplate = (rowData) => {
+        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.producto.price);
+    };
+
+    const subtotalTemplate = (rowData) => {
+        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.subtotal);
     };
 
     const footer = (
@@ -96,7 +127,7 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
                 label="Guardar Venta"
                 icon="pi pi-check"
                 onClick={handleSubmit}
-                disabled={!formData.cliente || formData.items.length === 0}
+                disabled={formData.items.length === 0}
                 loading={loading}
             />
         </div>
@@ -105,7 +136,7 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
     return (
         <Dialog
             visible={visible}
-            style={{ width: '800px' }}
+            style={{ width: '850px' }}
             header="Nueva Venta"
             modal
             className="p-fluid"
@@ -121,15 +152,34 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
                             options={clientes}
                             onChange={(e) => setFormData({ ...formData, cliente: e.value })}
                             optionLabel="nombreCompleto"
-                            placeholder="Seleccione un cliente"
+                            placeholder="Seleccione un cliente (opcional)"
                             filter
+                        />
+                        <small className="text-500">El cliente es opcional según el modelo del negocio</small>
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-3">
+                    <div className="field">
+                        <label className="font-bold">Fecha</label>
+                        <Calendar
+                            value={formData.fecha}
+                            onChange={(e) => setFormData({ ...formData, fecha: e.value })}
+                            showIcon
+                            dateFormat="dd/mm/yy"
                         />
                     </div>
                 </div>
-                <div className="col-12 md:col-6">
+
+                <div className="col-12 md:col-3">
                     <div className="field">
-                        <label className="font-bold">Fecha</label>
-                        <Calendar value={formData.fecha} onChange={(e) => setFormData({ ...formData, fecha: e.value })} showIcon />
+                        <label className="font-bold">Forma de Pago *</label>
+                        <Dropdown
+                            value={formData.formaPago}
+                            options={formasPago}
+                            onChange={(e) => setFormData({ ...formData, formaPago: e.value })}
+                            placeholder="Seleccione forma de pago"
+                        />
                     </div>
                 </div>
 
@@ -157,22 +207,38 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
                                 />
                             </div>
                             <div className="field col-12 md:col-3">
-                                <Button label="Agregar" icon="pi pi-plus" onClick={handleAddItem} disabled={!selectedProducto} />
+                                <Button
+                                    label="Agregar"
+                                    icon="pi pi-plus"
+                                    onClick={handleAddItem}
+                                    disabled={!selectedProducto}
+                                />
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="col-12">
-                    <DataTable value={formData.items} stripedRows size="small">
+                    <DataTable value={formData.items} stripedRows size="small" emptyMessage="No hay items agregados">
                         <Column field="producto.name" header="Producto"></Column>
                         <Column field="cantidad" header="Cant." style={{ width: '10%' }}></Column>
-                        <Column field="producto.price" header="Precio Unit." body={(rowData) => `$${rowData.producto.price}`}></Column>
-                        <Column field="subtotal" header="Subtotal" body={(rowData) => `$${rowData.subtotal}`}></Column>
-                        <Column body={(rowData) => <Button icon="pi pi-trash" className="p-button-danger p-button-text p-button-sm" onClick={() => handleRemoveItem(rowData)} />} style={{ width: '5%' }}></Column>
+                        <Column field="producto.price" header="Precio Unit." body={precioTemplate}></Column>
+                        <Column field="subtotal" header="Subtotal" body={subtotalTemplate}></Column>
+                        <Column
+                            body={(rowData) => (
+                                <Button
+                                    icon="pi pi-trash"
+                                    className="p-button-danger p-button-text p-button-sm"
+                                    onClick={() => handleRemoveItem(rowData)}
+                                />
+                            )}
+                            style={{ width: '5%' }}
+                        ></Column>
                     </DataTable>
                     <div className="flex justify-content-end mt-3">
-                        <h3 className="m-0">Total: ${formData.total}</h3>
+                        <h3 className="m-0">
+                            Total: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(formData.total)}
+                        </h3>
                     </div>
                 </div>
             </div>

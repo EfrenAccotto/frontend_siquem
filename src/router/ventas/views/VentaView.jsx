@@ -1,23 +1,19 @@
+import { useRef, useState, useEffect } from 'react';
+import { Toast } from 'primereact/toast';
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
-import { useEffect, useState, useRef } from 'react';
 import VentaService from '../services/VentaService';
 import VentaForm from '../components/VentaForm';
-import { Toast } from 'primereact/toast';
-
-const Columns = [
-  { field: 'order_id', header: 'Cliente', style: { width: '25%' } },
-  { field: 'date', header: 'Fecha', style: { width: '15%' }, body: (rowData) => new Date(rowData.date).toLocaleDateString('es-ES') },
-  { field: 'total_price', header: 'Total', style: { width: '15%' }, body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.total_price) },
-];
+import DetalleVentaDialog from '../components/DetalleVentaDialog';
 
 const VentaView = () => {
-  const [ventas, setVentas] = useState([]);
-  const [selectedVenta, setSelectedVenta] = useState(null);
+  const toast = useRef(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [showDetalleDialog, setShowDetalleDialog] = useState(false);
+  const [selectedVenta, setSelectedVenta] = useState(null);
+  const [ventas, setVentas] = useState([]);
   const [ventaEditando, setVentaEditando] = useState(null);
   const [loading, setLoading] = useState(false);
-  const toast = useRef(null);
 
   const fetchVentas = async () => {
     setLoading(true);
@@ -53,6 +49,12 @@ const VentaView = () => {
     }
   };
 
+  const handleVerDetalle = () => {
+    if (selectedVenta) {
+      setShowDetalleDialog(true);
+    }
+  };
+
   const handleGuardar = async (formData) => {
     try {
       if (ventaEditando) {
@@ -81,6 +83,21 @@ const VentaView = () => {
     }
   };
 
+  const handleGuardarDetalle = (ventaActualizada) => {
+    const ventasActualizadas = ventas.map(v =>
+      v.id === ventaActualizada.id ? ventaActualizada : v
+    );
+    setVentas(ventasActualizadas);
+    setSelectedVenta(ventaActualizada);
+
+    toast.current?.show({
+      severity: 'success',
+      summary: 'Éxito',
+      detail: 'Detalle de venta actualizado correctamente',
+      life: 3000
+    });
+  };
+
   const handleEliminar = async () => {
     if (selectedVenta) {
       try {
@@ -99,6 +116,31 @@ const VentaView = () => {
     }
   };
 
+  const columns = [
+    { field: 'id', header: 'ID', style: { width: '8%' } },
+    { field: 'cliente', header: 'Cliente', style: { width: '25%' } },
+    { field: 'fecha', header: 'Fecha', style: { width: '15%' } },
+    {
+      field: 'formaPago',
+      header: 'Forma de Pago',
+      style: { width: '17%' },
+      body: (rowData) => {
+        const formasPago = {
+          efectivo: 'Efectivo',
+          transferencia: 'Transferencia',
+          tarjeta: 'Tarjeta'
+        };
+        return formasPago[rowData.formaPago] || rowData.formaPago;
+      }
+    },
+    {
+      field: 'montoTotal',
+      header: 'Monto Total',
+      style: { width: '15%' },
+      body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.montoTotal)
+    }
+  ];
+
   return (
     <div className="venta-view h-full">
       <Toast ref={toast} />
@@ -107,25 +149,27 @@ const VentaView = () => {
         <h1 className="text-3xl font-bold m-0">Gestión de Ventas</h1>
       </div>
 
-      <div className="bg-white p-6 rounded shadow h-full">
-        <TableComponent
-          data={ventas}
-          loading={loading}
-          columns={Columns}
-          selection={selectedVenta}
-          onSelectionChange={setSelectedVenta}
-          header={<ActionButtons
-            showCreate={true}
-            showEdit={true}
-            showDelete={true}
-            editDisabled={!selectedVenta}
-            deleteDisabled={!selectedVenta}
-            onCreate={handleNuevo}
-            onEdit={handleEditar}
-            onDelete={handleEliminar}
-          />}
-        />
-      </div>
+      <TableComponent
+        data={ventas}
+        loading={loading}
+        columns={columns}
+        header={<ActionButtons
+          showCreate={true}
+          showEdit={true}
+          showDelete={true}
+          showExport={false}
+          showDetail={true}
+          editDisabled={!selectedVenta}
+          deleteDisabled={!selectedVenta}
+          detailDisabled={!selectedVenta}
+          onCreate={handleNuevo}
+          onEdit={handleEditar}
+          onDelete={handleEliminar}
+          onDetail={handleVerDetalle}
+        />}
+        selection={selectedVenta}
+        onSelectionChange={setSelectedVenta}
+      />
 
       <VentaForm
         visible={showDialog}
@@ -135,6 +179,13 @@ const VentaView = () => {
           setVentaEditando(null);
         }}
         onSave={handleGuardar}
+      />
+
+      <DetalleVentaDialog
+        visible={showDetalleDialog}
+        venta={selectedVenta}
+        onHide={() => setShowDetalleDialog(false)}
+        onSave={handleGuardarDetalle}
       />
     </div>
   );

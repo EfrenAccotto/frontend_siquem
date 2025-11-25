@@ -6,12 +6,15 @@ const ActionButtons = ({
   showEdit = true,
   showDelete = true,
   showExport = true,
+  showDetail = false,
   editDisabled = false,
   deleteDisabled = false,
+  detailDisabled = false,
   onCreate,
   onEdit,
   onDelete,
   onExport,
+  onDetail,
   searchValue,
   onSearch,
 }) => (
@@ -50,6 +53,16 @@ const ActionButtons = ({
           onClick={onDelete}
           disabled={deleteDisabled}
           style={deleteDisabled ? { opacity: 0.5 } : undefined}
+        />
+      )}
+      {showDetail && (
+        <Button
+          label="Ver Detalle"
+          icon="pi pi-list"
+          className="p-button-info p-button-raised"
+          onClick={onDetail}
+          disabled={detailDisabled}
+          style={detailDisabled ? { opacity: 0.5 } : undefined}
         />
       )}
       {showExport && (

@@ -11,17 +11,24 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
 
     const [formData, setFormData] = useState({
         cliente: null,
+        direccionEnvio: null,
+        observaciones: '',
         fechaPedido: new Date(),
-        fechaEntrega: null,
-        estado: 'Pendiente',
-        notas: ''
+        estado: 'Pendiente'
     });
 
+    // Estados según el modelo
     const estados = [
         { label: 'Pendiente', value: 'Pendiente' },
-        { label: 'En Proceso', value: 'En Proceso' },
         { label: 'Completado', value: 'Completado' },
         { label: 'Cancelado', value: 'Cancelado' }
+    ];
+
+    // Mock de direcciones (luego vendrá del backend)
+    const direccionesDisponibles = [
+        { id: 1, label: 'Av. Libertador 1000 (CABA, Buenos Aires)' },
+        { id: 2, label: 'Calle Falsa 123 (Springfield, Buenos Aires)' },
+        { id: 3, label: 'San Martín 456 (Rosario, Santa Fe)' }
     ];
 
     useEffect(() => {
@@ -29,10 +36,10 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
             fetchClientes();
             setFormData({
                 cliente: null,
+                direccionEnvio: null,
+                observaciones: '',
                 fechaPedido: new Date(),
-                fechaEntrega: null,
-                estado: 'Pendiente',
-                notas: ''
+                estado: 'Pendiente'
             });
         }
     }, [visible, fetchClientes]);
@@ -58,7 +65,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
     return (
         <Dialog
             visible={visible}
-            style={{ width: '600px' }}
+            style={{ width: '650px' }}
             header="Nuevo Pedido"
             modal
             className="p-fluid"
@@ -68,7 +75,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
             <div className="grid">
                 <div className="col-12">
                     <div className="field">
-                        <label className="font-bold">Cliente</label>
+                        <label className="font-bold">Cliente *</label>
                         <Dropdown
                             value={formData.cliente}
                             options={clientes}
@@ -80,21 +87,37 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
                     </div>
                 </div>
 
-                <div className="col-12 md:col-6">
-                    <div className="field">
-                        <label className="font-bold">Fecha Pedido</label>
-                        <Calendar value={formData.fechaPedido} onChange={(e) => setFormData({ ...formData, fechaPedido: e.value })} showIcon />
-                    </div>
-                </div>
-
-                <div className="col-12 md:col-6">
-                    <div className="field">
-                        <label className="font-bold">Fecha Entrega Estimada</label>
-                        <Calendar value={formData.fechaEntrega} onChange={(e) => setFormData({ ...formData, fechaEntrega: e.value })} showIcon />
-                    </div>
-                </div>
-
                 <div className="col-12">
+                    <div className="field">
+                        <label className="font-bold">Dirección de Envío</label>
+                        <Dropdown
+                            value={formData.direccionEnvio}
+                            options={direccionesDisponibles}
+                            onChange={(e) => setFormData({ ...formData, direccionEnvio: e.value })}
+                            optionLabel="label"
+                            placeholder="Seleccione dirección de envío"
+                            filter
+                        />
+                        <small className="text-500">
+                            Opcional. Si no se selecciona, se usa la dirección del cliente.
+                        </small>
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-6">
+                    <div className="field">
+                        <label className="font-bold">Fecha del Pedido</label>
+                        <Calendar
+                            value={formData.fechaPedido}
+                            onChange={(e) => setFormData({ ...formData, fechaPedido: e.value })}
+                            showIcon
+                            dateFormat="dd/mm/yy"
+                        />
+                        <small className="text-500">Fecha automática, editable si es necesario</small>
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-6">
                     <div className="field">
                         <label className="font-bold">Estado</label>
                         <Dropdown
@@ -103,18 +126,30 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
                             onChange={(e) => setFormData({ ...formData, estado: e.value })}
                             placeholder="Seleccione estado"
                         />
+                        <small className="text-500">Por defecto: Pendiente</small>
                     </div>
                 </div>
 
                 <div className="col-12">
                     <div className="field">
-                        <label className="font-bold">Notas</label>
+                        <label className="font-bold">Observaciones</label>
                         <InputTextarea
-                            value={formData.notas}
-                            onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
-                            rows={3}
+                            value={formData.observaciones}
+                            onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                            rows={4}
                             autoResize
+                            placeholder="Ingrese observaciones o notas sobre el pedido (opcional)"
                         />
+                    </div>
+                </div>
+
+                <div className="col-12">
+                    <div className="p-3 surface-100 border-round">
+                        <p className="m-0 text-sm">
+                            <i className="pi pi-info-circle mr-2"></i>
+                            <strong>Nota:</strong> Los items del pedido se agregan después de crear el pedido,
+                            usando el botón "Ver Detalle" en la tabla de pedidos.
+                        </p>
                     </div>
                 </div>
             </div>

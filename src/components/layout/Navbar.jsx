@@ -29,7 +29,8 @@ const PAGE_ROUTES = {
   '/clientes': 'Gestión de Clientes',
   '/productos': 'Inventario de Productos',
   '/ventas': 'Registro de Ventas',
-  '/pedidos': 'Seguimiento de Pedidos'
+  '/pedidos': 'Seguimiento de Pedidos',
+  '/reportes': 'Reportes y Exportaciones'
 };
 
 // ============================================================================
@@ -187,14 +188,6 @@ const AppNavbar = () => {
         <i className="pi pi-check-circle text-lg text-green-500"></i>
         <span className="text-sm font-medium">Sistema Activo</span>
       </div>
-
-      {/* Búsqueda rápida */}
-      <Button
-        icon="pi pi-search"
-        className="p-button-text p-button-rounded text-600"
-        tooltip="Búsqueda rápida"
-        tooltipOptions={{ position: 'bottom' }}
-      />
 
       {/* Modo claro/oscuro */}
       <Button

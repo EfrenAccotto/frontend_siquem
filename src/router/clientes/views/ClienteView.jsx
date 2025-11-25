@@ -108,25 +108,24 @@ const ClienteView = () => {
         <h1 className="text-3xl font-bold m-0">Gestión de Clientes</h1>
       </div>
 
-      <div className="bg-white p-6 rounded shadow h-full">
-        <TableComponent
-          data={clientes}
-          loading={loading}
-          columns={Columns}
-          selection={selectedCliente}
-          onSelectionChange={setSelectedCliente}
-          header={<ActionButtons
-            showCreate={true}
-            showEdit={true}
-            showDelete={true}
-            editDisabled={!selectedCliente}
-            deleteDisabled={!selectedCliente}
-            onCreate={handleNuevo}
-            onEdit={handleEditar}
-            onDelete={handleEliminar}
-          />}
-        />
-      </div>
+      <TableComponent
+        data={clientes}
+        loading={loading}
+        columns={Columns}
+        selection={selectedCliente}
+        onSelectionChange={setSelectedCliente}
+        header={<ActionButtons
+          showCreate={true}
+          showEdit={true}
+          showDelete={true}
+          showExport={false}
+          editDisabled={!selectedCliente}
+          deleteDisabled={!selectedCliente}
+          onCreate={handleNuevo}
+          onEdit={handleEditar}
+          onDelete={handleEliminar}
+        />}
+      />
 
       <ClienteForm
         visible={showDialog}
