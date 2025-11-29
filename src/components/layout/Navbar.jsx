@@ -53,11 +53,6 @@ const getPageTitle = (pathname) => {
  */
 const getUserMenuItems = (onHelpClick) => [
   {
-    label: 'Mi Perfil',
-    icon: 'pi pi-user',
-    command: () => console.log('Ver perfil')
-  },
-  {
     label: 'Configuración',
     icon: 'pi pi-cog',
     command: () => console.log('Configuración')
@@ -66,14 +61,6 @@ const getUserMenuItems = (onHelpClick) => [
     label: 'Ayuda',
     icon: 'pi pi-question-circle',
     command: onHelpClick
-  },
-  {
-    separator: true
-  },
-  {
-    label: 'Cerrar Sesión',
-    icon: 'pi pi-sign-out',
-    command: () => console.log('Cerrar sesión')
   }
 ];
 
@@ -240,7 +227,6 @@ const AppNavbar = () => {
               <span className="font-bold text-900 text-base">Admin Granja</span>
               <span className="text-600 text-xs">Administrador</span>
             </div>
-            <i className="pi pi-chevron-down text-600 text-sm"></i>
           </div>
         )}
       />

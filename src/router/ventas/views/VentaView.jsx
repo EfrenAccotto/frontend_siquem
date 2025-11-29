@@ -15,26 +15,38 @@ const VentaView = () => {
   const [ventaEditando, setVentaEditando] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchVentas = async () => {
-    setLoading(true);
-    try {
-      const response = await VentaService.getAll();
-      if (response.success) {
-        setVentas(response.data.results || response.data || []);
-      } else {
-        console.error('Error al obtener ventas:', response.error);
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar ventas', life: 3000 });
-      }
-    } catch (error) {
-      console.error('Error inesperado:', error);
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let mounted = true;
+
+    const fetchVentas = async () => {
+      setLoading(true);
+      try {
+        const response = await VentaService.getAll();
+        if (!mounted) return;
+
+        if (response.success) {
+          setVentas(response.data.results || response.data || []);
+        } else {
+          console.error('Error al obtener ventas:', response.error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar ventas', life: 3000 });
+        }
+      } catch (error) {
+        if (mounted) {
+          console.error('Error inesperado:', error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchVentas();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleNuevo = () => {

@@ -24,12 +24,14 @@ const ProductoView = () => {
   const [selectedProducto, setSelectedProducto] = useState(null);
   const [showDialog, setShowDialog] = useState(false);
   const [productoEditando, setProductoEditando] = useState(null);
+  const [loading, setLoading] = useState(false);
   const toast = useRef(null);
 
   useEffect(() => {
     let mounted = true;
 
     const loadProductos = async () => {
+      setLoading(true);
       try {
         const response = await ProductoService.getAll();
         if (mounted && response.success) {
@@ -42,6 +44,10 @@ const ProductoView = () => {
       } catch (error) {
         if (mounted) {
           console.error('Error inesperado:', error);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
         }
       }
     };
@@ -102,6 +108,7 @@ const ProductoView = () => {
       <TableComponent
         visible={true}
         data={productos}
+        loading={loading}
         columns={Columns}
         selection={selectedProducto}
         onSelectionChange={setSelectedProducto}

@@ -1,9 +1,13 @@
-const Loader = () => {
+import { ProgressSpinner } from 'primereact/progressspinner';
+
+const Loader = ({ style = { width: '50px', height: '50px' }, strokeWidth = "4" }) => {
   return (
-    <div className="flex justify-center items-center h-16">
-      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
-    </div>
-  )
+    <ProgressSpinner
+      style={style}
+      strokeWidth={strokeWidth}
+      animationDuration=".5s"
+    />
+  );
 }
 
-export default Loader
+export default Loader;

@@ -20,26 +20,38 @@ const ClienteView = () => {
   const [loading, setLoading] = useState(false);
   const toast = useRef(null);
 
-  const fetchClientes = async () => {
-    setLoading(true);
-    try {
-      const response = await ClienteService.getAll();
-      if (response.success) {
-        setClientes(response.data.results || response.data || []);
-      } else {
-        console.error('Error al obtener clientes:', response.error);
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar clientes', life: 3000 });
-      }
-    } catch (error) {
-      console.error('Error inesperado:', error);
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let mounted = true;
+
+    const fetchClientes = async () => {
+      setLoading(true);
+      try {
+        const response = await ClienteService.getAll();
+        if (!mounted) return;
+
+        if (response.success) {
+          setClientes(response.data.results || response.data || []);
+        } else {
+          console.error('Error al obtener clientes:', response.error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar clientes', life: 3000 });
+        }
+      } catch (error) {
+        if (mounted) {
+          console.error('Error inesperado:', error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchClientes();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleNuevo = () => {

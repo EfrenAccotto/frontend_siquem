@@ -15,26 +15,38 @@ const PedidoView = () => {
   const [pedidoEditando, setPedidoEditando] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchPedidos = async () => {
-    setLoading(true);
-    try {
-      const response = await PedidoService.getAll();
-      if (response.success) {
-        setPedidos(response.data.results || response.data || []);
-      } else {
-        console.error('Error al obtener pedidos:', response.error);
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar pedidos', life: 3000 });
-      }
-    } catch (error) {
-      console.error('Error inesperado:', error);
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    let mounted = true;
+
+    const fetchPedidos = async () => {
+      setLoading(true);
+      try {
+        const response = await PedidoService.getAll();
+        if (!mounted) return;
+
+        if (response.success) {
+          setPedidos(response.data.results || response.data || []);
+        } else {
+          console.error('Error al obtener pedidos:', response.error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar pedidos', life: 3000 });
+        }
+      } catch (error) {
+        if (mounted) {
+          console.error('Error inesperado:', error);
+          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
     fetchPedidos();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleNuevo = () => {
