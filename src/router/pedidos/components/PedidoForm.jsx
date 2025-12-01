@@ -3,50 +3,169 @@ import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
 import { Button } from 'primereact/button';
 import { InputTextarea } from 'primereact/inputtextarea';
-import { useState, useEffect } from 'react';
+import { InputText } from 'primereact/inputtext';
+import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
+import UbicacionService from '@/router/ubicacion/services/UbicacionService';
 
 const PedidoForm = ({ visible, onHide, onSave, loading }) => {
     const { clientes, fetchClientes } = useClienteStore();
 
     const [formData, setFormData] = useState({
         cliente: null,
-        direccionEnvio: null,
+        provincia: null,
+        localidad: null,
+        direccionCalle: '',
+        direccionNumero: '',
+        direccionPiso: '',
+        direccionDepto: '',
+        direccionId: null,
         observaciones: '',
         fechaPedido: new Date(),
         estado: 'Pendiente'
     });
 
-    // Estados según el modelo
+    const [provincias, setProvincias] = useState([]);
+    const [localidades, setLocalidades] = useState([]);
+
+    // Estados segun el modelo
     const estados = [
         { label: 'Pendiente', value: 'Pendiente' },
         { label: 'Completado', value: 'Completado' },
         { label: 'Cancelado', value: 'Cancelado' }
     ];
 
-    // Mock de direcciones (luego vendrá del backend)
-    const direccionesDisponibles = [
-        { id: 1, label: 'Av. Libertador 1000 (CABA, Buenos Aires)' },
-        { id: 2, label: 'Calle Falsa 123 (Springfield, Buenos Aires)' },
-        { id: 3, label: 'San Martín 456 (Rosario, Santa Fe)' }
-    ];
+    const formatDireccionTexto = (data) => {
+        const calleNumero = [data.direccionCalle, data.direccionNumero].filter(Boolean).join(' ').trim();
+        const locProv = [
+            data.localidad?.nombre || data.localidad_nombre,
+            data.provincia?.nombre || data.provincia_nombre
+        ].filter(Boolean).join(', ').trim();
+        return [calleNumero, locProv].filter(Boolean).join(' (') + (locProv ? ')' : '');
+    };
+
+    const loadProvincias = async () => {
+        const response = await UbicacionService.getProvincias();
+        if (response.success) {
+            setProvincias(response.data || []);
+        }
+    };
+
+    const handleProvinciaChange = async (provinciaSeleccionada) => {
+        setFormData(prev => ({
+            ...prev,
+            provincia: provinciaSeleccionada,
+            localidad: null,
+            direccionCalle: '',
+            direccionNumero: '',
+            direccionPiso: '',
+            direccionDepto: '',
+            direccionId: null
+        }));
+        setLocalidades([]);
+        if (provinciaSeleccionada) {
+            const response = await UbicacionService.getLocalidades(provinciaSeleccionada.id || provinciaSeleccionada.value || provinciaSeleccionada);
+            if (response.success) {
+                setLocalidades(response.data || []);
+            }
+        }
+    };
+
+    const handleLocalidadChange = (localidadSeleccionada) => {
+        setFormData(prev => ({
+            ...prev,
+            localidad: localidadSeleccionada,
+            direccionId: null
+        }));
+    };
+
+    const direccionDesdeCliente = (clienteSeleccionado) => {
+        if (!clienteSeleccionado) return {
+            provincia: null,
+            localidad: null,
+            direccionCalle: '',
+            direccionNumero: '',
+            direccionPiso: '',
+            direccionDepto: '',
+            direccionId: null
+        };
+
+        const dir = clienteSeleccionado.direccion || clienteSeleccionado.direccionEnvio || {};
+        const provincia = dir.localidad?.provincia || null;
+        const localidad = dir.localidad || null;
+
+        return {
+            provincia,
+            localidad,
+            direccionCalle: dir.calle || '',
+            direccionNumero: dir.numero || '',
+            direccionPiso: dir.piso || '',
+            direccionDepto: dir.departamento || '',
+            direccionId: dir.id || null
+        };
+    };
+
+    const handleClienteChange = async (clienteSeleccionado) => {
+        const dir = direccionDesdeCliente(clienteSeleccionado);
+        if (dir.provincia) {
+            await handleProvinciaChange(dir.provincia);
+        } else {
+            setLocalidades([]);
+        }
+        if (dir.localidad) {
+            setLocalidades((prev) => prev.length ? prev : []);
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            cliente: clienteSeleccionado,
+            provincia: dir.provincia,
+            localidad: dir.localidad,
+            direccionCalle: dir.direccionCalle,
+            direccionNumero: dir.direccionNumero,
+            direccionPiso: dir.direccionPiso,
+            direccionDepto: dir.direccionDepto,
+            direccionId: dir.direccionId
+        }));
+    };
 
     useEffect(() => {
         if (visible) {
             fetchClientes();
+            loadProvincias();
             setFormData({
                 cliente: null,
-                direccionEnvio: null,
+                provincia: null,
+                localidad: null,
+                direccionCalle: '',
+                direccionNumero: '',
+                direccionPiso: '',
+                direccionDepto: '',
+                direccionId: null,
                 observaciones: '',
                 fechaPedido: new Date(),
                 estado: 'Pendiente'
             });
+            setLocalidades([]);
         }
     }, [visible, fetchClientes]);
 
     const handleSubmit = () => {
         if (!formData.cliente) return;
-        onSave(formData);
+        const direccionPayload = {
+            id: formData.direccionId,
+            calle: formData.direccionCalle || null,
+            numero: formData.direccionNumero || null,
+            piso: formData.direccionPiso || null,
+            departamento: formData.direccionDepto || null,
+            localidad: formData.localidad?.id || formData.localidad || null,
+            provincia: formData.provincia?.id || formData.provincia || null,
+            display: formatDireccionTexto(formData)
+        };
+        onSave({
+            ...formData,
+            direccionEnvio: direccionPayload,
+        });
     };
 
     const footer = (
@@ -65,7 +184,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
     return (
         <Dialog
             visible={visible}
-            style={{ width: '650px' }}
+            style={{ width: '700px' }}
             header="Nuevo Pedido"
             modal
             className="p-fluid"
@@ -79,7 +198,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
                         <Dropdown
                             value={formData.cliente}
                             options={clientes}
-                            onChange={(e) => setFormData({ ...formData, cliente: e.value })}
+                            onChange={(e) => handleClienteChange(e.value)}
                             optionLabel="nombreCompleto"
                             placeholder="Seleccione un cliente"
                             filter
@@ -87,20 +206,76 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
                     </div>
                 </div>
 
-                <div className="col-12">
+                <div className="col-12 md:col-6">
                     <div className="field">
-                        <label className="font-bold">Dirección de Envío</label>
+                        <label className="font-bold">Provincia</label>
                         <Dropdown
-                            value={formData.direccionEnvio}
-                            options={direccionesDisponibles}
-                            onChange={(e) => setFormData({ ...formData, direccionEnvio: e.value })}
-                            optionLabel="label"
-                            placeholder="Seleccione dirección de envío"
+                            value={formData.provincia}
+                            options={provincias}
+                            optionLabel="nombre"
+                            placeholder="Seleccione provincia"
+                            onChange={(e) => handleProvinciaChange(e.value)}
                             filter
                         />
-                        <small className="text-500">
-                            Opcional. Si no se selecciona, se usa la dirección del cliente.
-                        </small>
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-6">
+                    <div className="field">
+                        <label className="font-bold">Localidad</label>
+                        <Dropdown
+                            value={formData.localidad}
+                            options={localidades}
+                            optionLabel="nombre"
+                            placeholder="Seleccione localidad"
+                            onChange={(e) => handleLocalidadChange(e.value)}
+                            filter
+                            disabled={!formData.provincia}
+                        />
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-8">
+                    <div className="field">
+                        <label className="font-bold">Calle</label>
+                        <InputText
+                            value={formData.direccionCalle}
+                            onChange={(e) => setFormData({ ...formData, direccionCalle: e.target.value })}
+                            placeholder="Ej: Calle Principal"
+                        />
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-4">
+                    <div className="field">
+                        <label className="font-bold">Numero</label>
+                        <InputText
+                            value={formData.direccionNumero}
+                            onChange={(e) => setFormData({ ...formData, direccionNumero: e.target.value })}
+                            placeholder="Ej: 123"
+                        />
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-6">
+                    <div className="field">
+                        <label className="font-bold">Piso</label>
+                        <InputText
+                            value={formData.direccionPiso}
+                            onChange={(e) => setFormData({ ...formData, direccionPiso: e.target.value })}
+                            placeholder="Opcional"
+                        />
+                    </div>
+                </div>
+
+                <div className="col-12 md:col-6">
+                    <div className="field">
+                        <label className="font-bold">Departamento</label>
+                        <InputText
+                            value={formData.direccionDepto}
+                            onChange={(e) => setFormData({ ...formData, direccionDepto: e.target.value })}
+                            placeholder="Opcional"
+                        />
                     </div>
                 </div>
 
@@ -113,7 +288,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
                             showIcon
                             dateFormat="dd/mm/yy"
                         />
-                        <small className="text-500">Fecha automática, editable si es necesario</small>
+                        <small className="text-500">Fecha automatica, editable si es necesario</small>
                     </div>
                 </div>
 
@@ -147,8 +322,8 @@ const PedidoForm = ({ visible, onHide, onSave, loading }) => {
                     <div className="p-3 surface-100 border-round">
                         <p className="m-0 text-sm">
                             <i className="pi pi-info-circle mr-2"></i>
-                            <strong>Nota:</strong> Los items del pedido se agregan después de crear el pedido,
-                            usando el botón "Ver Detalle" en la tabla de pedidos.
+                            <strong>Nota:</strong> Los items del pedido se agregan despues de crear el pedido,
+                            usando el boton "Ver Detalle" en la tabla de pedidos.
                         </p>
                     </div>
                 </div>

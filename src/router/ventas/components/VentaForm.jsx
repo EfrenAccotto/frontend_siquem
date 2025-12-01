@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 
-const VentaForm = ({ visible, onHide, onSave, loading }) => {
+const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = null }) => {
     const { clientes, fetchClientes } = useClienteStore();
     const [productosDisponibles, setProductosDisponibles] = useState([]);
 
@@ -32,28 +32,85 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
         { label: 'Tarjeta', value: 'tarjeta' }
     ];
 
+    const buildItemsFromPedido = (pedidoData) => {
+        const detalles = pedidoData?.detalles || pedidoData?.items || [];
+        return (detalles || []).map((detalle) => {
+            const producto = detalle.producto || detalle.product || {};
+            const price = producto.price ?? producto.precio ?? detalle.precioUnitario ?? detalle.precio ?? 0;
+            const qty = detalle.cantidad ?? detalle.qty ?? 1;
+            return {
+                id: detalle.id || Date.now() + Math.random(),
+                producto,
+                cantidad: qty,
+                precioUnitario: price,
+                subtotal: price * qty
+            };
+        });
+    };
+
+    const resolveCliente = (clienteData) => {
+        if (!clienteData) return null;
+        const id = clienteData.id || clienteData.clienteId || clienteData;
+        const nombre = clienteData.nombreCompleto || clienteData.nombre || clienteData.name || clienteData.cliente;
+        const foundById = clientes.find((c) => c.id === id);
+        if (foundById) return foundById;
+        const foundByName = clientes.find((c) => c.nombreCompleto === nombre || c.nombre === nombre || c.name === nombre);
+        return foundByName || null;
+    };
+
     useEffect(() => {
         if (visible) {
             fetchClientes();
             loadProductos();
-            setFormData({
+
+            const baseForm = {
                 cliente: null,
                 fecha: new Date(),
                 formaPago: 'efectivo',
                 items: [],
                 total: 0,
                 detalles: []
-            });
+            };
+
+            if (venta) {
+                const itemsVenta = buildItemsFromPedido(venta);
+                const totalVenta = itemsVenta.reduce((acc, item) => acc + item.subtotal, 0);
+                setFormData({
+                    ...baseForm,
+                    cliente: resolveCliente(venta.cliente),
+                    fecha: venta.fecha ? new Date(venta.fecha) : new Date(),
+                    formaPago: venta.formaPago || 'efectivo',
+                    items: itemsVenta,
+                    detalles: itemsVenta,
+                    total: totalVenta
+                });
+            } else if (pedido) {
+                const itemsPedido = buildItemsFromPedido(pedido);
+                const totalPedido = itemsPedido.reduce((acc, item) => acc + item.subtotal, 0);
+                setFormData({
+                    ...baseForm,
+                    cliente: resolveCliente(pedido.cliente),
+                    fecha: pedido.fechaPedido ? new Date(pedido.fechaPedido) : new Date(),
+                    formaPago: 'efectivo',
+                    items: itemsPedido,
+                    detalles: itemsPedido,
+                    total: totalPedido
+                });
+            } else {
+                setFormData(baseForm);
+            }
+
             setSelectedProducto(null);
             setCantidad(1);
         }
-    }, [visible, fetchClientes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, fetchClientes, venta, pedido, clientes]);
 
     const loadProductos = async () => {
         try {
             const response = await ProductoService.getAll();
             if (response.success) {
-                setProductosDisponibles(response.data);
+                setProductosDisponibles(response.data?.results || response.data || []);
             }
         } catch (error) {
             console.error("Error loading products", error);
@@ -63,12 +120,13 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
     const handleAddItem = () => {
         if (!selectedProducto || cantidad <= 0) return;
 
+        const price = selectedProducto.price ?? selectedProducto.precio ?? 0;
         const newItem = {
             id: Date.now(),
             producto: selectedProducto,
             cantidad: cantidad,
-            precioUnitario: selectedProducto.price,
-            subtotal: selectedProducto.price * cantidad
+            precioUnitario: price,
+            subtotal: price * cantidad
         };
 
         setFormData(prev => {
@@ -113,7 +171,8 @@ const VentaForm = ({ visible, onHide, onSave, loading }) => {
     };
 
     const precioTemplate = (rowData) => {
-        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.producto.price);
+        const price = rowData.precioUnitario ?? rowData.producto?.price ?? 0;
+        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
     };
 
     const subtotalTemplate = (rowData) => {

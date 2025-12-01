@@ -17,14 +17,16 @@ const ActionButtons = ({
   onDetail,
   searchValue,
   onSearch,
+  searchPlaceholder = 'Buscar...',
+  filtersContent = null,
+  extraActions = null,
 }) => (
-  <div className="flex gap-2 align-items-center w-full">
-    {/* Barra de búsqueda */}
-    <div className="flex-1">
+  <div className="flex gap-2 align-items-center w-full flex-wrap">
+    <div className="flex-1" style={{ minWidth: '220px' }}>
       <span className="p-input-icon-left">
         <i className="pi pi-search ml-2" />
         <InputText
-          placeholder="Buscar..."
+          placeholder={searchPlaceholder}
           className="w-full pl-5"
           value={searchValue}
           onChange={(e) => onSearch && onSearch(e.target.value)}
@@ -32,8 +34,14 @@ const ActionButtons = ({
       </span>
     </div>
 
-    {/* Botones de acción (visibilidad condicional) */}
-    <div className="flex gap-2">
+    {filtersContent && (
+      <div className="flex align-items-center gap-2 flex-wrap">
+        {filtersContent}
+      </div>
+    )}
+
+    <div className="flex gap-2 flex-wrap justify-content-end">
+      {extraActions}
       {showCreate && (
         <Button label="Crear" className="p-button-success p-button-raised" onClick={onCreate} />
       )}
