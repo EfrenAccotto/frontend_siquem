@@ -16,6 +16,10 @@
   --navbar-height: 5.5rem; /* py-3 (1.5rem) + contenido text-xl + text-sm (~4rem) */
 }
 
+.p-menubar-button {
+  display: none !important; /* Oculta el menú hamburguesa automático del Menubar */
+}
+
 html, body, #root {
   height: 100vh;
   max-height: 100vh;

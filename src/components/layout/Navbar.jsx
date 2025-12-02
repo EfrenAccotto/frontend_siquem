@@ -224,8 +224,7 @@ const AppNavbar = () => {
               className="bg-gradient-to-r from-blue-500 to-blue-600 shadow"
             />
             <div className="hidden md:flex flex-column text-left">
-              <span className="font-bold text-900 text-base">Admin Granja</span>
-              <span className="text-600 text-xs">Administrador</span>
+              <span className="font-bold text-900 text-base">Administrador</span>
             </div>
           </div>
         )}
@@ -244,6 +243,8 @@ const AppNavbar = () => {
         start={startContent}
         end={endContent}
         className="bg-white shadow-2 border-bottom-1 surface-border px-4 py-3"
+        breakpoint="0px"
+        pt={{ menuButton: { style: { display: 'none' } } }}
         style={{
           backdropFilter: 'blur(10px)',
           border: 'none'

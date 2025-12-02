@@ -58,7 +58,12 @@ const AppSidebar = () => {
   return (
     <>
       {/* Menubar superior (opcional) */}
-      <Menubar start={startContent} className="shadow-1" />
+      <Menubar
+        start={startContent}
+        className="shadow-1"
+        breakpoint="0px"
+        pt={{ menuButton: { style: { display: 'none' } } }}
+      />
 
       {/* Sidebar principal */}
       <Sidebar
