@@ -9,11 +9,12 @@ const Columns = [
   { field: 'first_name', header: 'Nombre', style: { width: '25%' } },
   { field: 'last_name', header: 'Apellido', style: { width: '25%' } },
   { field: 'phone_number', header: 'Teléfono', style: { width: '20%' } },
-  { field: 'dni', header: 'Email', style: { width: '25%' } },
+  { field: 'dni', header: 'DNI', style: { width: '20%' } },
 ];
 
 const ClienteView = () => {
   const [clientes, setClientes] = useState([]);
+  const [search, setSearch] = useState('');
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [showDialog, setShowDialog] = useState(false);
   const [clienteEditando, setClienteEditando] = useState(null);
@@ -30,7 +31,9 @@ const ClienteView = () => {
         if (!mounted) return;
 
         if (response.success) {
-          setClientes(response.data.results || response.data || []);
+          const list = response.data.results || response.data || [];
+          const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
+          setClientes(sorted);
         } else {
           console.error('Error al obtener clientes:', response.error);
           toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar clientes', life: 3000 });
@@ -71,19 +74,49 @@ const ClienteView = () => {
       if (clienteEditando) {
         const response = await ClienteService.update(clienteEditando.id, formData);
         if (response.success) {
-          const updatedClientes = clientes.map(c => c.id === clienteEditando.id ? { ...c, ...formData } : c);
+          const updatedClientes = clientes
+            .map(c => c.id === clienteEditando.id ? response.data : c)
+            .sort((a, b) => (b.id || 0) - (a.id || 0));
           setClientes(updatedClientes);
           toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente actualizado', life: 3000 });
         } else {
-          throw new Error(response.error);
+          const detail = typeof response.error === 'string' ? response.error : JSON.stringify(response.error);
+          throw new Error(detail);
         }
       } else {
         const response = await ClienteService.create(formData);
         if (response.success) {
-          setClientes([...clientes, response.data]);
+          // Optimista: agrega el nuevo registro primero
+          setClientes((prev) => {
+            const next = [response.data, ...(prev || [])];
+            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+          });
+          // Refresca con backend en segundo plano, solo si trae algo
+          ClienteService.getAll()
+            .then((refetch) => {
+              const list = refetch?.data?.results || refetch?.data || [];
+              if (Array.isArray(list) && list.length > 0) {
+                setClientes([...list].sort((a, b) => (b.id || 0) - (a.id || 0)));
+              }
+            })
+            .catch(() => {
+              /* si falla el refetch, dejamos la lista optimista */
+            });
           toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente creado', life: 3000 });
         } else {
-          throw new Error(response.error);
+          // Intenta extraer el primer mensaje legible del backend
+          const err = response.error;
+          let detail = typeof err === 'string' ? err : '';
+          if (!detail && err && typeof err === 'object') {
+            const firstKey = Object.keys(err)[0];
+            const firstVal = err[firstKey];
+            if (Array.isArray(firstVal) && firstVal.length) {
+              detail = `${firstKey}: ${firstVal[0]}`;
+            } else {
+              detail = JSON.stringify(err);
+            }
+          }
+          throw new Error(detail || 'Error al crear cliente');
         }
       }
 
@@ -112,6 +145,19 @@ const ClienteView = () => {
     }
   };
 
+  const filteredClientes = Array.isArray(clientes)
+    ? clientes.filter((c) => {
+        const term = search.toLowerCase().trim();
+        if (!term) return true;
+        return (
+          (c.first_name || '').toLowerCase().includes(term) ||
+          (c.last_name || '').toLowerCase().includes(term) ||
+          (c.dni || '').toString().toLowerCase().includes(term) ||
+          (c.phone_number || '').toLowerCase().includes(term)
+        );
+      })
+    : [];
+
   return (
     <div className="cliente-view h-full">
       <Toast ref={toast} />
@@ -121,7 +167,7 @@ const ClienteView = () => {
       </div>
 
       <TableComponent
-        data={clientes}
+        data={filteredClientes}
         loading={loading}
         columns={Columns}
         selection={selectedCliente}
@@ -133,6 +179,8 @@ const ClienteView = () => {
           showExport={false}
           editDisabled={!selectedCliente}
           deleteDisabled={!selectedCliente}
+          searchValue={search}
+          onSearch={(value) => setSearch(value || '')}
           onCreate={handleNuevo}
           onEdit={handleEditar}
           onDelete={handleEliminar}

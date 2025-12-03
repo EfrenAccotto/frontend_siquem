@@ -2,106 +2,70 @@ import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
+import { AutoComplete } from 'primereact/autocomplete';
 import { useEffect, useState } from 'react';
 import UbicacionService from '@/router/ubicacion/services/UbicacionService';
 
-const zonaFijas = [
-  { label: 'Centro', value: 'Centro' },
-  { label: 'Banda Norte', value: 'Banda Norte' },
-  { label: 'Alberdi', value: 'Alberdi' },
-  { label: 'Las Higueras', value: 'Las Higueras' },
-];
-
-const mapZonas = (zonas = []) =>
-  (zonas || []).map((z) => ({
-    label: z.label || z.nombre || z.name || z,
-    value: z.value || z.id || z.nombre || z.name || z
-  }));
-
 const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const [formData, setFormData] = useState({
-    nombre: '',
-    apellido: '',
-    telefono: '',
-    provincia: null,
-    localidad: null,
-    direccionCalle: '',
-    direccionNumero: '',
-    direccionPiso: '',
-    direccionDepto: '',
-    zona: null,
-    email: '',
-    empresa: ''
+    first_name: '',
+    last_name: '',
+    phone_number: '',
+    dni: '',
+    province: null,
+    locality: null,
+    street: '',
+    number: '',
+    floor: '',
+    apartment: ''
   });
 
   const [errors, setErrors] = useState({});
   const [provincias, setProvincias] = useState([]);
   const [localidades, setLocalidades] = useState([]);
-  const [zonas, setZonas] = useState(mapZonas(zonaFijas));
+  const [localidadSuggestions, setLocalidadSuggestions] = useState([]);
 
-  const formatDireccionTexto = (data) => {
-    const calleNumero = [data.direccionCalle, data.direccionNumero].filter(Boolean).join(' ').trim();
-    const locProv = [
-      data.localidad?.nombre || data.localidad_nombre,
-      data.provincia?.nombre || data.provincia_nombre
-    ].filter(Boolean).join(', ').trim();
-    return [calleNumero, locProv].filter(Boolean).join(' (') + (locProv ? ')' : '');
-  };
-
-  const mapClienteToForm = async (clienteData) => {
-    const direccion = clienteData?.direccion;
-    const provincia = direccion?.localidad?.provincia || clienteData?.provincia || null;
-    const localidad = direccion?.localidad || clienteData?.localidad || null;
-
-    if (provincia?.id) {
-      await handleProvinciaChange(provincia);
-    }
-    if (localidad?.id || localidad?.value) {
-      await handleLocalidadChange(localidad);
-    }
-
-    setFormData((prev) => ({
-      ...prev,
-      nombre: clienteData?.nombre || '',
-      apellido: clienteData?.apellido || '',
-      telefono: clienteData?.telefono || '',
-      provincia: provincia || null,
-      localidad: localidad || null,
-      direccionCalle: direccion?.calle || '',
-      direccionNumero: direccion?.numero || '',
-      direccionPiso: direccion?.piso || '',
-      direccionDepto: direccion?.departamento || '',
-      zona: clienteData?.zona?.id || clienteData?.zona?.value || clienteData?.zona || null,
-      email: clienteData?.email || '',
-      empresa: clienteData?.empresa || ''
+  const mapProvincias = (items = []) =>
+    (items || []).map((p) => ({
+      label: p.name || p.label || p,
+      value: p.id || p.value || p
     }));
-  };
+
+  const mapLocalidades = (items = []) =>
+    (items || []).map((l) => ({
+      label: l.name || l.label || l,
+      value: l.id || l.value || l,
+      province: l.province
+    }));
 
   const loadProvincias = async () => {
     const response = await UbicacionService.getProvincias();
     if (response.success) {
-      setProvincias(response.data || []);
+      const list = response.data || [];
+      setProvincias(mapProvincias(list));
     }
   };
 
   const handleProvinciaChange = async (provinciaSeleccionada) => {
     setFormData((prev) => ({
       ...prev,
-      provincia: provinciaSeleccionada,
-      localidad: null,
-      direccionCalle: '',
-      direccionNumero: '',
-      direccionPiso: '',
-      direccionDepto: '',
-      zona: null,
+      province: provinciaSeleccionada,
+      locality: null,
+      street: '',
+      number: '',
+      floor: '',
+      apartment: ''
     }));
     setLocalidades([]);
-    setZonas(mapZonas(zonaFijas));
+    setLocalidadSuggestions([]);
 
     if (provinciaSeleccionada) {
-      const response = await UbicacionService.getLocalidades(provinciaSeleccionada.id || provinciaSeleccionada.value || provinciaSeleccionada);
+      const response = await UbicacionService.getLocalidades(provinciaSeleccionada);
       if (response.success) {
-        setLocalidades(response.data || []);
+        const list = response.data || [];
+        const mapped = mapLocalidades(list);
+        setLocalidades(mapped);
+        setLocalidadSuggestions(mapped);
       }
     }
   };
@@ -109,52 +73,56 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const handleLocalidadChange = async (localidadSeleccionada) => {
     setFormData((prev) => ({
       ...prev,
-      localidad: localidadSeleccionada,
-      zona: null,
+      locality: localidadSeleccionada
     }));
-    const zonasResp = await UbicacionService.getZonas(localidadSeleccionada?.id || localidadSeleccionada?.value || localidadSeleccionada);
-    if (zonasResp.success && (zonasResp.data || []).length) {
-      setZonas(mapZonas(zonasResp.data));
-    } else {
-      setZonas(mapZonas(zonaFijas));
+  };
+
+  const handleLocalidadInputChange = (value) => {
+    handleLocalidadChange(value);
+    if (errors.locality) {
+      setErrors((prev) => ({ ...prev, locality: null }));
     }
+  };
+
+  const filterLocalidadSuggestions = (event) => {
+    const query = (event.query || '').toLowerCase();
+    const filtered = localidades.filter((loc) => (loc.label || '').toLowerCase().includes(query));
+    setLocalidadSuggestions(filtered);
   };
 
   useEffect(() => {
     if (visible) {
       loadProvincias();
-      if (cliente) {
-        mapClienteToForm(cliente);
+      const nextForm = {
+        first_name: cliente?.first_name || '',
+        last_name: cliente?.last_name || '',
+        phone_number: cliente?.phone_number || '',
+        dni: cliente?.dni || '',
+        province: cliente?.address?.locality?.province?.id || null,
+        locality: cliente?.address?.locality?.id || null,
+        street: cliente?.address?.street || '',
+        number: cliente?.address?.number || '',
+        floor: cliente?.address?.floor || '',
+        apartment: cliente?.address?.apartment || ''
+      };
+      setFormData(nextForm);
+      if (nextForm.province) {
+        handleProvinciaChange(nextForm.province);
       } else {
-        setFormData({
-          nombre: '',
-          apellido: '',
-          telefono: '',
-          provincia: null,
-          localidad: null,
-          direccionCalle: '',
-          direccionNumero: '',
-          direccionPiso: '',
-          direccionDepto: '',
-          zona: null,
-          email: '',
-          empresa: ''
-        });
         setLocalidades([]);
-        setZonas(mapZonas(zonaFijas));
+        setLocalidadSuggestions([]);
       }
       setErrors({});
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, cliente]);
 
   const handleChange = (name, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value
     }));
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev) => ({
         ...prev,
         [name]: null
       }));
@@ -164,16 +132,34 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const validate = () => {
     const newErrors = {};
 
-    if (!formData.nombre.trim()) {
-      newErrors.nombre = 'El nombre es requerido';
+    if (!formData.first_name.trim()) {
+      newErrors.first_name = 'El nombre es requerido';
     }
 
-    if (!formData.apellido.trim()) {
-      newErrors.apellido = 'El apellido es requerido';
+    if (!formData.last_name.trim()) {
+      newErrors.last_name = 'El apellido es requerido';
     }
 
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'El email no es valido';
+    if (!formData.dni.trim()) {
+      newErrors.dni = 'El DNI es requerido';
+    } else if (formData.dni.length !== 8 || !/^\d+$/.test(formData.dni)) {
+      newErrors.dni = 'El DNI debe tener 8 dígitos numéricos';
+    }
+
+    if (!formData.province) {
+      newErrors.province = 'La provincia es requerida';
+    }
+
+    if (!formData.locality) {
+      newErrors.locality = 'La localidad es requerida';
+    }
+
+    if (!formData.street.trim()) {
+      newErrors.street = 'La calle es requerida';
+    }
+
+    if (!formData.number.trim()) {
+      newErrors.number = 'El número es requerido';
     }
 
     setErrors(newErrors);
@@ -183,27 +169,18 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validate()) {
-      const direccionPayload = {
-        calle: formData.direccionCalle || null,
-        numero: formData.direccionNumero || null,
-        piso: formData.direccionPiso || null,
-        departamento: formData.direccionDepto || null,
-        localidad: formData.localidad?.id || formData.localidad || null,
-        provincia: formData.provincia?.id || formData.provincia || null,
-        display: formatDireccionTexto(formData)
-      };
-
       const dataToSave = {
-        nombre: formData.nombre,
-        apellido: formData.apellido,
-        telefono: formData.telefono,
-        email: formData.email,
-        empresa: formData.empresa,
-        provincia: formData.provincia?.id || formData.provincia || null,
-        localidad: formData.localidad?.id || formData.localidad || null,
-        direccion: direccionPayload,
-        zona: formData.zona?.id || formData.zona?.value || formData.zona || null,
-        nombreCompleto: `${formData.nombre} ${formData.apellido}`.trim()
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
+        phone_number: formData.phone_number || '',
+        dni: formData.dni.trim(),
+        address: {
+          street: formData.street.trim(),
+          number: formData.number.trim(),
+          floor: formData.floor || '',
+          apartment: formData.apartment || '',
+          locality_id: formData.locality?.value || formData.locality || null
+        }
       };
       onSave(dataToSave);
     }
@@ -247,13 +224,13 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
               </label>
               <InputText
                 id="nombre"
-                value={formData.nombre}
-                onChange={(e) => handleChange('nombre', e.target.value)}
-                className={errors.nombre ? 'p-invalid' : ''}
+                value={formData.first_name}
+                onChange={(e) => handleChange('first_name', e.target.value)}
+                className={errors.first_name ? 'p-invalid' : ''}
                 placeholder="Ej: Juan"
               />
-              {errors.nombre && (
-                <small className="p-error">{errors.nombre}</small>
+              {errors.first_name && (
+                <small className="p-error">{errors.first_name}</small>
               )}
             </div>
           </div>
@@ -265,13 +242,13 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
               </label>
               <InputText
                 id="apellido"
-                value={formData.apellido}
-                onChange={(e) => handleChange('apellido', e.target.value)}
-                className={errors.apellido ? 'p-invalid' : ''}
+                value={formData.last_name}
+                onChange={(e) => handleChange('last_name', e.target.value)}
+                className={errors.last_name ? 'p-invalid' : ''}
                 placeholder="Ej: Perez"
               />
-              {errors.apellido && (
-                <small className="p-error">{errors.apellido}</small>
+              {errors.last_name && (
+                <small className="p-error">{errors.last_name}</small>
               )}
             </div>
           </div>
@@ -279,12 +256,12 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
           <div className="col-12 md:col-6">
             <div className="field">
               <label htmlFor="telefono" className="font-bold">
-                Telefono
+                Teléfono
               </label>
               <InputText
                 id="telefono"
-                value={formData.telefono}
-                onChange={(e) => handleChange('telefono', e.target.value)}
+                value={formData.phone_number}
+                onChange={(e) => handleChange('phone_number', e.target.value)}
                 placeholder="Ej: +54 11 1234-5678"
               />
             </div>
@@ -292,19 +269,18 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
 
           <div className="col-12 md:col-6">
             <div className="field">
-              <label htmlFor="email" className="font-bold">
-                Correo Electronico
+              <label htmlFor="dni" className="font-bold">
+                DNI *
               </label>
               <InputText
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                className={errors.email ? 'p-invalid' : ''}
-                placeholder="Ej: cliente@email.com"
+                id="dni"
+                value={formData.dni}
+                onChange={(e) => handleChange('dni', e.target.value)}
+                className={errors.dni ? 'p-invalid' : ''}
+                placeholder="Ej: 12345678"
               />
-              {errors.email && (
-                <small className="p-error">{errors.email}</small>
+              {errors.dni && (
+                <small className="p-error">{errors.dni}</small>
               )}
             </div>
           </div>
@@ -313,28 +289,39 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
             <div className="field">
               <label className="font-bold">Provincia</label>
               <Dropdown
-                value={formData.provincia}
+                value={formData.province}
                 options={provincias}
-                optionLabel="nombre"
+                optionLabel="label"
+                optionValue="value"
                 placeholder="Seleccione provincia"
                 onChange={(e) => handleProvinciaChange(e.value)}
                 filter
+                className={errors.province ? 'p-invalid' : ''}
               />
+              {errors.province && (
+                <small className="p-error">{errors.province}</small>
+              )}
             </div>
           </div>
 
           <div className="col-12 md:col-6">
             <div className="field">
               <label className="font-bold">Localidad</label>
-              <Dropdown
-                value={formData.localidad}
-                options={localidades}
-                optionLabel="nombre"
-                placeholder="Seleccione localidad"
-                onChange={(e) => handleLocalidadChange(e.value)}
-                filter
-                disabled={!formData.provincia}
+              <AutoComplete
+                value={formData.locality}
+                suggestions={localidadSuggestions}
+                completeMethod={filterLocalidadSuggestions}
+                field="label"
+                forceSelection={false}
+                dropdown
+                placeholder="Seleccione o escriba localidad"
+                onChange={(e) => handleLocalidadInputChange(e.value)}
+                disabled={!formData.province}
+                className={errors.locality ? 'p-invalid w-full' : 'w-full'}
               />
+              {errors.locality && (
+                <small className="p-error">{errors.locality}</small>
+              )}
             </div>
           </div>
 
@@ -342,21 +329,25 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
             <div className="field">
               <label className="font-bold">Calle</label>
               <InputText
-                value={formData.direccionCalle}
-                onChange={(e) => handleChange('direccionCalle', e.target.value)}
+                value={formData.street}
+                onChange={(e) => handleChange('street', e.target.value)}
                 placeholder="Ej: Calle Principal"
+                className={errors.street ? 'p-invalid' : ''}
               />
+              {errors.street && <small className="p-error">{errors.street}</small>}
             </div>
           </div>
 
           <div className="col-12 md:col-4">
             <div className="field">
-              <label className="font-bold">Numero</label>
+              <label className="font-bold">Número</label>
               <InputText
-                value={formData.direccionNumero}
-                onChange={(e) => handleChange('direccionNumero', e.target.value)}
+                value={formData.number}
+                onChange={(e) => handleChange('number', e.target.value)}
                 placeholder="Ej: 123"
+                className={errors.number ? 'p-invalid' : ''}
               />
+              {errors.number && <small className="p-error">{errors.number}</small>}
             </div>
           </div>
 
@@ -364,8 +355,8 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
             <div className="field">
               <label className="font-bold">Piso</label>
               <InputText
-                value={formData.direccionPiso}
-                onChange={(e) => handleChange('direccionPiso', e.target.value)}
+                value={formData.floor}
+                onChange={(e) => handleChange('floor', e.target.value)}
                 placeholder="Opcional"
               />
             </div>
@@ -375,40 +366,9 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
             <div className="field">
               <label className="font-bold">Departamento</label>
               <InputText
-                value={formData.direccionDepto}
-                onChange={(e) => handleChange('direccionDepto', e.target.value)}
+                value={formData.apartment}
+                onChange={(e) => handleChange('apartment', e.target.value)}
                 placeholder="Opcional"
-              />
-            </div>
-          </div>
-
-          <div className="col-12 md:col-6">
-            <div className="field">
-              <label htmlFor="zona" className="font-bold">
-                Zona
-              </label>
-              <Dropdown
-                id="zona"
-                value={formData.zona}
-                options={zonas}
-                optionLabel="label"
-                placeholder="Seleccione zona"
-                onChange={(e) => handleChange('zona', e.value)}
-                disabled={!formData.localidad}
-              />
-            </div>
-          </div>
-
-          <div className="col-12">
-            <div className="field">
-              <label htmlFor="empresa" className="font-bold">
-                Empresa
-              </label>
-              <InputText
-                id="empresa"
-                value={formData.empresa}
-                onChange={(e) => handleChange('empresa', e.target.value)}
-                placeholder="Empresa a la que pertenece (opcional)"
               />
             </div>
           </div>

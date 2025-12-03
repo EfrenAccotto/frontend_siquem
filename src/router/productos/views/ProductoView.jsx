@@ -53,6 +53,7 @@ const ProductoView = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [productoEditando, setProductoEditando] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [filters, setFilters] = useState({ category: null, name: '' });
   const [categoryOptions, setCategoryOptions] = useState([]);
   const toast = useRef(null);
@@ -68,9 +69,10 @@ const ProductoView = () => {
         if (!mounted) return;
 
         if (response.success) {
-          const productosList = response.data.results || response.data || [];
-          setProductos(productosList);
-          setCategoryOptions(buildCategoryOptions(productosList));
+          const productosList = Array.isArray(response.data) ? response.data : [];
+          const sorted = [...productosList].sort((a, b) => (b.id || 0) - (a.id || 0));
+          setProductos(sorted);
+          setCategoryOptions(buildCategoryOptions(sorted));
           setSelectedProducto(null);
         } else {
           console.error('Error al obtener productos:', response.error);
@@ -99,7 +101,7 @@ const ProductoView = () => {
   };
 
   const handleNameFilter = (value) => {
-    setFilters((prev) => ({ ...prev, name: value }));
+    setFilters((prev) => ({ ...prev, name: value || '' }));
   };
 
   const handleNuevo = () => {
@@ -115,30 +117,80 @@ const ProductoView = () => {
   };
 
   const handleGuardar = async (formData) => {
-    console.log('Guardando producto:', formData);
-
-    if (productoEditando) {
-      const updatedProductos = productos.map(p => p.id === productoEditando.id ? { ...p, ...formData } : p);
-      setProductos(updatedProductos);
-      toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto actualizado', life: 3000 });
-    } else {
-      const newProduct = { ...formData, id: Date.now() };
-      setProductos([...productos, newProduct]);
-      toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto creado', life: 3000 });
+    try {
+      setSaving(true);
+      if (productoEditando) {
+        const response = await ProductoService.update(productoEditando.id, formData);
+        if (response.success) {
+          const updatedProductos = productos
+            .map(p => (p.id === productoEditando.id ? response.data : p))
+            .sort((a, b) => (b.id || 0) - (a.id || 0));
+          setProductos(updatedProductos);
+          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto actualizado', life: 3000 });
+        } else {
+          throw new Error(response.error || 'No se pudo actualizar');
+        }
+      } else {
+        const response = await ProductoService.create(formData);
+        if (response.success) {
+          // Optimista
+          setProductos((prev) => {
+            const next = [response.data, ...(prev || [])];
+            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+          });
+          // Refrescar con backend (solo si trae resultados)
+          ProductoService.getAll()
+            .then((refetch) => {
+              const list = refetch?.data?.results || refetch?.data || [];
+              if (Array.isArray(list) && list.length > 0) {
+                setProductos([...list].sort((a, b) => (b.id || 0) - (a.id || 0)));
+              }
+            })
+            .catch(() => { /* mantener lista optimista si falla */ });
+          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto creado', life: 3000 });
+        } else {
+          throw new Error(response.error || 'No se pudo crear');
+        }
+      }
+      setShowDialog(false);
+      setProductoEditando(null);
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+    } finally {
+      setSaving(false);
     }
-
-    setShowDialog(false);
-    setProductoEditando(null);
   };
 
-  const handleEliminar = () => {
+  const handleEliminar = async () => {
     if (selectedProducto) {
-      const updatedProductos = productos.filter(p => p.id !== selectedProducto.id);
-      setProductos(updatedProductos);
-      setSelectedProducto(null);
-      toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto eliminado', life: 3000 });
+      try {
+        const response = await ProductoService.delete(selectedProducto.id);
+        if (response.success) {
+          const refetch = await ProductoService.getAll();
+          const list = refetch?.data?.results || refetch?.data || [];
+          const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
+          setProductos(sorted);
+          setSelectedProducto(null);
+          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto eliminado', life: 3000 });
+        } else {
+          throw new Error(response.error || 'No se pudo eliminar');
+        }
+      } catch (error) {
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+      }
     }
   };
+
+  const filteredProductos = Array.isArray(productos)
+    ? productos.filter((p) => {
+        const term = (filters.name || '').toLowerCase().trim();
+        if (!term) return true;
+        return (
+          (p.name || '').toLowerCase().includes(term) ||
+          (p.description || '').toLowerCase().includes(term)
+        );
+      })
+    : [];
 
   return (
     <div className="producto-view h-full">
@@ -150,7 +202,7 @@ const ProductoView = () => {
 
       <TableComponent
         visible={true}
-        data={productos}
+        data={filteredProductos}
         loading={loading}
         columns={Columns}
         selection={selectedProducto}
@@ -190,6 +242,7 @@ const ProductoView = () => {
           setProductoEditando(null);
         }}
         onSave={handleGuardar}
+        loading={saving}
       />
     </div>
   );

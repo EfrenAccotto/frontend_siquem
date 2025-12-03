@@ -28,7 +28,6 @@ const TableComponent = ({
         <DataTable
           value={Array.isArray(data) ? data : []}
           header={header}
-          columns={columns}
           paginator
           rows={10}
           rowsPerPageOptions={[5, 10, 25, 50]}
@@ -43,11 +42,14 @@ const TableComponent = ({
         >
           {columns.map((column) => (
             <Column
-              key={column.field}
+              key={column.field || column.header}
               field={column.field}
               header={column.header}
+              body={column.body}
               sortable
               style={column.style}
+              headerStyle={column.headerStyle}
+              bodyClassName={column.bodyClassName}
             />
           ))}
         </DataTable>

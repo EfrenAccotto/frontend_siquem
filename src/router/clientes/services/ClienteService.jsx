@@ -1,27 +1,44 @@
 import axios from 'axios';
 
-// Configuración específica para clientes
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
-const CLIENTES_ENDPOINT = `${BASE_URL}/customer/`;
+// Asegura que no haya doble slash si la env var trae la barra final
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
+const CLIENTES_ENDPOINT = `${BASE_URL}/customer`;
 
-/**
- * Servicio para operaciones CRUD de Clientes
- */
 class ClienteService {
-  /**
-   * Obtener todos los clientes
-   * @param {Object} params - Parámetros de consulta (filtros, paginación, etc.)
-   * @returns {Promise} Lista de clientes
-   */
   static async getAll(params = {}) {
+    // Paginación defensiva: recorre todas las páginas hasta que no haya "next"
+    const baseUrl = `${CLIENTES_ENDPOINT}/`;
+    const query = { ordering: '-id', ...params };
     try {
-      const response = await axios.get(CLIENTES_ENDPOINT, { params });
-      console.log(response);
-      return {
-        success: true,
-        data: response.data,
-        status: response.status
-      };
+      let url = baseUrl;
+      let first = true;
+      let all = [];
+      let pagination = {};
+      while (url) {
+        const resp = await axios.get(url, { params: first ? query : undefined });
+        const data = resp.data;
+        const chunk = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
+        all = all.concat(chunk);
+        pagination = {
+          count: data?.count,
+          next: data?.next,
+          previous: data?.previous
+        };
+        url = data?.next;
+        first = false;
+      }
+      // Si la API no trae paginación (array directo)
+      if (!all.length) {
+        const resp = await axios.get(baseUrl, { params: query });
+        const data = resp.data;
+        all = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
+        pagination = {
+          count: data?.count,
+          next: data?.next,
+          previous: data?.previous
+        };
+      }
+      return { success: true, data: all, pagination, status: 200 };
     } catch (error) {
       return {
         success: false,
@@ -31,11 +48,6 @@ class ClienteService {
     }
   }
 
-  /**
-   * Obtener un cliente por ID
-   * @param {number|string} id - ID del cliente
-   * @returns {Promise} Datos del cliente
-   */
   static async getById(id) {
     try {
       const response = await axios.get(`${CLIENTES_ENDPOINT}/${id}/`);
@@ -53,14 +65,9 @@ class ClienteService {
     }
   }
 
-  /**
-   * Crear un nuevo cliente
-   * @param {Object} clienteData - Datos del cliente a crear
-   * @returns {Promise} Cliente creado
-   */
   static async create(clienteData) {
     try {
-      const response = await axios.post(`${CLIENTES_ENDPOINT}`, clienteData);
+      const response = await axios.post(`${CLIENTES_ENDPOINT}/`, clienteData);
       return {
         success: true,
         data: response.data,
@@ -68,24 +75,19 @@ class ClienteService {
         message: 'Cliente creado exitosamente'
       };
     } catch (error) {
+      console.error('ClienteService.create error', error.response?.data || error.message);
       return {
         success: false,
-        error: error.response?.data?.message || 'Error al crear cliente',
-        errors: error.response?.data?.errors || {},
+        error: error.response?.data || 'Error al crear cliente',
+        errors: error.response?.data || {},
         status: error.response?.status || 500
       };
     }
   }
 
-  /**
-   * Actualizar un cliente existente
-   * @param {number|string} id - ID del cliente
-   * @param {Object} clienteData - Datos actualizados del cliente
-   * @returns {Promise} Cliente actualizado
-   */
   static async update(id, clienteData) {
     try {
-      const response = await axios.put(`${CLIENTES_ENDPOINT}${id}/`, clienteData);
+      const response = await axios.put(`${CLIENTES_ENDPOINT}/${id}/`, clienteData);
       return {
         success: true,
         data: response.data,
@@ -102,12 +104,6 @@ class ClienteService {
     }
   }
 
-  /**
-   * Actualización parcial de un cliente
-   * @param {number|string} id - ID del cliente
-   * @param {Object} clienteData - Datos parciales a actualizar
-   * @returns {Promise} Cliente actualizado
-   */
   static async partialUpdate(id, clienteData) {
     try {
       const response = await axios.patch(`${CLIENTES_ENDPOINT}${id}/`, clienteData);
@@ -127,11 +123,6 @@ class ClienteService {
     }
   }
 
-  /**
-   * Eliminar un cliente
-   * @param {number|string} id - ID del cliente a eliminar
-   * @returns {Promise} Confirmación de eliminación
-   */
   static async delete(id) {
     try {
       const response = await axios.delete(`${CLIENTES_ENDPOINT}${id}/`);
@@ -144,75 +135,6 @@ class ClienteService {
       return {
         success: false,
         error: error.response?.data?.message || `Error al eliminar cliente con ID: ${id}`,
-        status: error.response?.status || 500
-      };
-    }
-  }
-
-  /**
-   * Buscar clientes por criterios específicos
-   * @param {Object} searchParams - Parámetros de búsqueda
-   * @returns {Promise} Lista de clientes filtrados
-   */
-  static async search(searchParams) {
-    try {
-      const response = await axios.get(`${CLIENTES_ENDPOINT}search/`, { 
-        params: searchParams 
-      });
-      return {
-        success: true,
-        data: response.data,
-        status: response.status
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Error en la búsqueda de clientes',
-        status: error.response?.status || 500
-      };
-    }
-  }
-
-  /**
-   * Obtener clientes activos
-   * @returns {Promise} Lista de clientes activos
-   */
-  static async getActive() {
-    try {
-      const response = await axios.get(`${CLIENTES_ENDPOINT}`, { 
-        params: { is_active: true } 
-      });
-      return {
-        success: true,
-        data: response.data,
-        status: response.status
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Error al obtener clientes activos',
-        status: error.response?.status || 500
-      };
-    }
-  }
-
-  /**
-   * Obtener historial de pedidos de un cliente
-   * @param {number|string} id - ID del cliente
-   * @returns {Promise} Lista de pedidos del cliente
-   */
-  static async getOrderHistory(id) {
-    try {
-      const response = await axios.get(`${CLIENTES_ENDPOINT}${id}/orders/`);
-      return {
-        success: true,
-        data: response.data,
-        status: response.status
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || `Error al obtener historial de pedidos del cliente con ID: ${id}`,
         status: error.response?.status || 500
       };
     }

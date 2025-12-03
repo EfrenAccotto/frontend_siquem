@@ -12,15 +12,15 @@ import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
 
 const estadoOptions = [
-  { label: 'Pendiente', value: 'Pendiente' },
-  { label: 'Completado', value: 'Completado' },
-  { label: 'Cancelado', value: 'Cancelado' }
+  { label: 'Pendiente', value: 'pending' },
+  { label: 'Completado', value: 'completed' },
+  { label: 'Cancelado', value: 'cancelled' }
 ];
 
 const buildPedidoParams = (filters) => {
   const params = {};
-  if (filters?.estado) params.status = filters.estado;
-  if (filters?.clienteId) params.client = filters.clienteId;
+  if (filters?.estado) params.state = filters.estado;
+  if (filters?.clienteId) params.customer = filters.clienteId;
   if (filters?.search?.trim()) params.search = filters.search.trim();
   return params;
 };
@@ -35,6 +35,7 @@ const PedidoView = () => {
   const [pedidoEditando, setPedidoEditando] = useState(null);
   const [loading, setLoading] = useState(false);
   const [savingVenta, setSavingVenta] = useState(false);
+  const [pedidoParaVenta, setPedidoParaVenta] = useState(null);
   const [filters, setFilters] = useState({ estado: null, clienteId: null, search: '' });
   const { clientes, fetchClientes } = useClienteStore();
 
@@ -53,7 +54,14 @@ const PedidoView = () => {
         if (!mounted) return;
 
         if (response.success) {
-          setPedidos(response.data.results || response.data || []);
+          const list = response.data?.results || response.data || [];
+          const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
+          const enhanced = sorted.map((p) => {
+            if (p.shipping_address_str) return p;
+            const addr = p.shipping_address || p.customer?.address;
+            return { ...p, shipping_address_str: formatAddress(addr) };
+          });
+          setPedidos(enhanced);
           setSelectedPedido(null);
         } else {
           console.error('Error al obtener pedidos:', response.error);
@@ -78,10 +86,12 @@ const PedidoView = () => {
     };
   }, [filters]);
 
-  const clienteOptions = (clientes || []).map((cliente) => ({
-    label: cliente.nombreCompleto || cliente.nombre || cliente.name,
-    value: cliente.id
-  }));
+  const clienteOptions = Array.isArray(clientes)
+    ? clientes.map((cliente) => ({
+        label: `${cliente.first_name || ''} ${cliente.last_name || ''}`.trim() || cliente.name,
+        value: cliente.id
+      }))
+    : [];
 
   const handleEstadoFilter = (value) => {
     setFilters((prev) => ({ ...prev, estado: value || null }));
@@ -92,12 +102,26 @@ const PedidoView = () => {
   };
 
   const handleSearch = (value) => {
-    setFilters((prev) => ({ ...prev, search: value }));
+    const term = typeof value === 'string'
+      ? value
+      : (value?.target?.value ?? '');
+    setFilters((prev) => ({ ...prev, search: term }));
   };
 
   const handleNuevo = () => {
     setPedidoEditando(null);
     setShowDialog(true);
+  };
+
+  const formatAddress = (addr) => {
+    if (!addr) return null;
+    const locality = addr.locality_name || addr.locality?.name || '';
+    const province = addr.province_name || addr.locality?.province?.name || '';
+    const loc = [locality, province].filter(Boolean).join(', ');
+    const streetNum = `${addr.street || ''} ${addr.number || ''}`.trim();
+    const extra = [addr.floor, addr.apartment].filter(Boolean).join(' ');
+    const main = [streetNum, loc ? `(${loc})` : ''].filter(Boolean).join(' ');
+    return [main, extra].filter(Boolean).join(' ').trim() || null;
   };
 
   const handleEditar = () => {
@@ -114,8 +138,67 @@ const PedidoView = () => {
   };
 
   const handleGenerarVenta = () => {
-    if (selectedPedido) {
-      setShowVentaDialog(true);
+    if (!selectedPedido) return;
+    // fallback inicial en caso de que la carga detallada falle
+    setPedidoParaVenta(selectedPedido);
+
+    PedidoService.getById(selectedPedido.id)
+      .then((resp) => {
+        if (resp.success) {
+          const pedidoData = resp.data;
+          const detalles = Array.isArray(pedidoData?.detail) ? pedidoData.detail : [];
+          const detallesEnriquecidos = detalles.map((d) => {
+            const price = d.product_price ?? 0;
+            const qty = d.quantity || 1;
+            return {
+              ...d,
+              producto: {
+                id: d.product_id,
+                name: d.product_name || `Producto ${d.product_id}`,
+                price
+              },
+              cantidad: qty,
+              subtotal: Number((price * qty).toFixed(2))
+            };
+          });
+          const enriched = {
+            ...pedidoData,
+            items: detallesEnriquecidos,
+            detalle: detallesEnriquecidos,
+            detail: detallesEnriquecidos,
+            detalles: detallesEnriquecidos
+          };
+          setSelectedPedido(enriched);
+          setPedidoParaVenta(enriched);
+        }
+      })
+      .finally(() => setShowVentaDialog(true));
+  };
+
+  const handleGenerarRemito = async () => {
+    if (!selectedPedido) return;
+    const base = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
+    const url = `${base}/remito/${selectedPedido.id}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: selectedPedido.id })
+      });
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({}));
+        const msg = errBody?.detail || errBody?.error || `Error HTTP ${resp.status}`;
+        throw new Error(msg);
+      }
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Éxito',
+        detail: 'Remito generado correctamente',
+        life: 3000
+      });
+    } catch (error) {
+      const detail = error?.message || 'No se pudo generar el remito.';
+      toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 4000 });
     }
   };
 
@@ -124,7 +207,14 @@ const PedidoView = () => {
       if (pedidoEditando) {
         const response = await PedidoService.update(pedidoEditando.id, formData);
         if (response.success) {
-          const updatedPedidos = pedidos.map(p => p.id === pedidoEditando.id ? { ...p, ...formData } : p);
+          const updated = response.data || formData;
+          const updatedPedidos = [...pedidos.map((p) => {
+            if (p.id !== pedidoEditando.id) return p;
+            const addr = updated.shipping_address || updated.customer?.address;
+            return { ...p, ...updated, shipping_address_str: formatAddress(addr) };
+          })].sort(
+            (a, b) => (b.id || 0) - (a.id || 0)
+          );
           setPedidos(updatedPedidos);
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido actualizado', life: 3000 });
         } else {
@@ -133,7 +223,26 @@ const PedidoView = () => {
       } else {
         const response = await PedidoService.create(formData);
         if (response.success) {
-          setPedidos([...pedidos, response.data]);
+          setPedidos((prev) => {
+            const enriched = {
+              ...response.data,
+              shipping_address_str: formatAddress(
+                response.data.shipping_address || response.data.customer?.address
+              )
+            };
+            const next = [enriched, ...(prev || [])];
+            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+          });
+          PedidoService.getAll()
+            .then((refetch) => {
+              const list = refetch?.data?.results || refetch?.data || [];
+              if (Array.isArray(list) && list.length > 0) {
+                setPedidos([...list].sort((a, b) => (b.id || 0) - (a.id || 0)));
+              }
+            })
+            .catch(() => {
+              /* mantener lista optimista si falla */
+            });
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido creado', life: 3000 });
         } else {
           throw new Error(response.error);
@@ -147,30 +256,82 @@ const PedidoView = () => {
     }
   };
 
-  const handleGuardarVenta = async (ventaData) => {
+  const handleGuardarVenta = async (ventaData, items = []) => {
     if (!selectedPedido) return;
     try {
       setSavingVenta(true);
-      const payload = {
-        ...ventaData,
-        pedidoId: selectedPedido.id
-      };
+
+      const total = (items || []).reduce((acc, item) => acc + (Number(item.subtotal) || 0), 0);
+      const payload = { ...ventaData, total_price: Number(total.toFixed(2)) };
+
       const response = await VentaService.create(payload);
-      if (response.success) {
-        toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Venta generada desde pedido', life: 3000 });
-        setShowVentaDialog(false);
-      } else {
-        throw new Error(response.error);
+      if (!response.success) {
+        const err = typeof response.error === 'string' ? response.error : JSON.stringify(response.error);
+        throw new Error(err || 'No se pudo crear la venta');
       }
+
+      const saleId = response.data?.id;
+
+      if (saleId && Array.isArray(items) && items.length) {
+        let existingProductIds = new Set();
+        try {
+          const existing = await VentaService.getDetailsBySaleId(saleId);
+          const list = existing?.data || [];
+          existingProductIds = new Set(list.map((d) => d.product_id || d.product?.id).filter(Boolean));
+        } catch (_) {
+          // seguimos con set vacío
+        }
+
+        const normalized = (items || [])
+          .map((item) => {
+            const qty = item.cantidad || item.quantity || 1;
+            const price =
+              item.precioUnitario ??
+              item.product_price ??
+              item.producto?.price ??
+              item.product?.price ??
+              0;
+            const productId = item.producto?.id || item.product_id || item.product?.id;
+            return {
+              sale_id: saleId,
+              product_id: productId,
+              quantity: qty,
+              price,
+              subtotal: item.subtotal ?? Number((price * qty).toFixed(2))
+            };
+          })
+          .filter((d) => d.product_id && !existingProductIds.has(d.product_id));
+
+        for (const detailPayload of normalized) {
+          const detailResp = await VentaService.createDetail(detailPayload);
+          if (!detailResp.success) {
+            const errDet =
+              typeof detailResp.error === 'string' ? detailResp.error : JSON.stringify(detailResp.error);
+            throw new Error(errDet || 'No se pudo crear un detalle de venta');
+          }
+        }
+      }
+
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Éxito',
+        detail: 'Venta generada desde pedido',
+        life: 3000
+      });
+      setShowVentaDialog(false);
     } catch (error) {
-      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+      const detail =
+        error?.message || 'No se pudo crear la venta. Revisa los datos e inténtalo nuevamente.';
+      console.error('Error generando venta desde pedido:', error);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 4000 });
     } finally {
       setSavingVenta(false);
+      setPedidoParaVenta(null);
     }
   };
 
   const handleGuardarDetalle = (pedidoActualizado) => {
-    const pedidosActualizados = pedidos.map(p =>
+    const pedidosActualizados = pedidos.map((p) =>
       p.id === pedidoActualizado.id ? pedidoActualizado : p
     );
     setPedidos(pedidosActualizados);
@@ -189,9 +350,22 @@ const PedidoView = () => {
       try {
         const response = await PedidoService.delete(selectedPedido.id);
         if (response.success) {
-          const updatedPedidos = pedidos.filter(p => p.id !== selectedPedido.id);
-          setPedidos(updatedPedidos);
-          setSelectedPedido(null);
+        setPedidos((prev) => prev.filter((p) => p.id !== selectedPedido.id));
+        setSelectedPedido(null);
+        PedidoService.getAll()
+          .then((refetch) => {
+            const list = refetch?.data?.results || refetch?.data || [];
+            if (Array.isArray(list) && list.length > 0) {
+              const enhanced = list.map((p) => ({
+                ...p,
+                shipping_address_str: formatAddress(p.shipping_address || p.customer?.address)
+              }));
+              setPedidos(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
+            }
+          })
+            .catch(() => {
+              /* mantener lista local si falla */
+            });
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido eliminado', life: 3000 });
         } else {
           throw new Error(response.error);
@@ -202,34 +376,67 @@ const PedidoView = () => {
     }
   };
 
-  // Formatear direccion
+  // Filtro cliente/estado/búsqueda en front para garantizar funcionamiento
+  const filteredPedidos = Array.isArray(pedidos)
+    ? pedidos.filter((p) => {
+        const term = (filters.search || '').toLowerCase().trim();
+        if (filters.estado && p.state !== filters.estado) return false;
+        if (filters.clienteId && (p.customer?.id || p.customer_id) !== filters.clienteId) return false;
+        if (!term) return true;
+
+        const nombre = `${p.customer?.first_name || ''} ${p.customer?.last_name || ''}`.toLowerCase();
+        const idMatch = (p.id || '').toString().toLowerCase().includes(term);
+        const obsMatch = (p.observations || '').toLowerCase().includes(term);
+        const fechaMatch = (p.date || '').toString().toLowerCase().includes(term);
+        const nombreMatch = nombre.includes(term);
+
+        return idMatch || obsMatch || fechaMatch || nombreMatch;
+      })
+    : [];
+
   const direccionTemplate = (rowData) => {
-    return rowData.direccionEnvio || '-';
+    if (rowData.shipping_address_str) return rowData.shipping_address_str;
+    const addr = rowData.shipping_address || rowData.customer?.address;
+    if (!addr) return '-';
+    const locality = addr.locality_name || addr.locality?.name || '';
+    const province = addr.province_name || addr.locality?.province?.name || '';
+    const locProv = [locality, province].filter(Boolean).join(', ');
+    const street = addr.street || '';
+    const number = addr.number || '';
+    const base = `${street} ${number}`.trim();
+    const extra = [addr.floor, addr.apartment].filter(Boolean).join(' ');
+    const main = [base, locProv ? `(${locProv})` : ''].filter(Boolean).join(' ');
+    return [main, extra].filter(Boolean).join(' ').trim() || '-';
   };
 
-  // Formatear estado con badge de color
   const estadoTemplate = (rowData) => {
     const estadoClasses = {
-      'Pendiente': 'p-badge-warning',
-      'Completado': 'p-badge-success',
-      'Cancelado': 'p-badge-danger'
+      pending: 'p-badge-warning',
+      completed: 'p-badge-success',
+      cancelled: 'p-badge-danger'
     };
-    const className = estadoClasses[rowData.estado] || 'p-badge-info';
-    return <span className={`p-badge ${className}`}>{rowData.estado}</span>;
+    const className = estadoClasses[rowData.state] || 'p-badge-info';
+    return <span className={`p-badge ${className}`}>{rowData.state}</span>;
   };
 
   const columns = [
     { field: 'id', header: 'ID', style: { width: '8%' } },
-    { field: 'cliente', header: 'Cliente', style: { width: '25%' } },
     {
-      field: 'direccionEnvio',
+      field: 'customer',
+      header: 'Cliente',
+      body: (rowData) =>
+        `${rowData.customer?.first_name || ''} ${rowData.customer?.last_name || ''}`.trim() || '-',
+      style: { width: '25%' }
+    },
+    {
+      field: 'shipping_address',
       header: 'Direccion de Envio',
       body: direccionTemplate,
       style: { width: '27%' }
     },
-    { field: 'fechaPedido', header: 'Fecha Pedido', style: { width: '15%' } },
+    { field: 'date', header: 'Fecha Pedido', style: { width: '15%' } },
     {
-      field: 'estado',
+      field: 'state',
       header: 'Estado',
       body: estadoTemplate,
       style: { width: '15%' }
@@ -245,57 +452,68 @@ const PedidoView = () => {
       </div>
 
       <TableComponent
-        data={pedidos}
+        data={filteredPedidos}
         loading={loading}
         columns={columns}
-        header={<ActionButtons
-          showCreate={true}
-          showEdit={true}
-          showDelete={true}
-          showDetail={true}
-          showExport={false}
-          editDisabled={!selectedPedido}
-          deleteDisabled={!selectedPedido}
-          detailDisabled={!selectedPedido}
-          onCreate={handleNuevo}
-          onEdit={handleEditar}
-          onDelete={handleEliminar}
-          onDetail={handleVerDetalle}
-          searchValue={filters.search}
-          onSearch={handleSearch}
-          searchPlaceholder="Buscar pedido"
-          filtersContent={(
-            <>
-              <Dropdown
-                value={filters.estado}
-                options={estadoOptions}
-                onChange={(e) => handleEstadoFilter(e.value)}
-                placeholder="Estado"
-                showClear
-                className="w-11rem"
-              />
-              <Dropdown
-                value={filters.clienteId}
-                options={clienteOptions}
-                onChange={(e) => handleClienteFilter(e.value)}
-                placeholder="Cliente"
-                showClear
-                filter
-                className="w-14rem"
-              />
-            </>
-          )}
-          extraActions={
-            <Button
-              label="Generar Venta"
-              icon="pi pi-shopping-cart"
-              className="p-button-secondary p-button-raised"
-              onClick={handleGenerarVenta}
-              disabled={!selectedPedido}
-              style={(!selectedPedido) ? { opacity: 0.5 } : undefined}
-            />
-          }
-        />}
+        header={
+          <ActionButtons
+            showCreate={true}
+            showEdit={true}
+            showDelete={true}
+            showDetail={true}
+            showExport={false}
+            editDisabled={!selectedPedido}
+            deleteDisabled={!selectedPedido}
+            detailDisabled={!selectedPedido}
+            onCreate={handleNuevo}
+            onEdit={handleEditar}
+            onDelete={handleEliminar}
+            onDetail={handleVerDetalle}
+            searchValue={filters.search}
+            onSearch={handleSearch}
+            searchPlaceholder="Buscar pedido"
+            filtersContent={
+              <>
+                <Dropdown
+                  value={filters.estado}
+                  options={estadoOptions}
+                  onChange={(e) => handleEstadoFilter(e.value)}
+                  placeholder="Estado"
+                  showClear
+                  className="w-11rem"
+                />
+                <Dropdown
+                  value={filters.clienteId}
+                  options={clienteOptions}
+                  onChange={(e) => handleClienteFilter(e.value)}
+                  placeholder="Cliente"
+                  showClear
+                  filter
+                  className="w-14rem"
+                />
+              </>
+            }
+            extraActions={
+              <>
+                <Button
+                  label="Generar Remitos"
+                  icon="pi pi-file"
+                  className="p-button-help p-button-raised mr-2"
+                  onClick={handleGenerarRemito}
+                  disabled={!selectedPedido}
+                />
+                <Button
+                  label="Generar Venta"
+                  icon="pi pi-shopping-cart"
+                  className="p-button-secondary p-button-raised"
+                  onClick={handleGenerarVenta}
+                  disabled={!selectedPedido}
+                  style={{ display: 'none' }}
+                />
+              </>
+            }
+          />
+        }
         selection={selectedPedido}
         onSelectionChange={setSelectedPedido}
       />
@@ -319,10 +537,13 @@ const PedidoView = () => {
 
       <VentaForm
         visible={showVentaDialog}
-        onHide={() => setShowVentaDialog(false)}
+        onHide={() => {
+          setShowVentaDialog(false);
+          setPedidoParaVenta(null);
+        }}
         onSave={handleGuardarVenta}
         loading={savingVenta}
-        pedido={selectedPedido}
+        pedido={pedidoParaVenta || selectedPedido}
       />
     </div>
   );

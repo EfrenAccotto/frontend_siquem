@@ -1,16 +1,13 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
 
-/**
- * Servicio simplificado para ubicaciones (provincias, localidades, direcciones, zonas).
- * Si la API no responde, devuelve arreglos vacíos para no romper la UI.
- */
 class UbicacionService {
   static async getProvincias() {
     try {
-      const response = await axios.get(`${BASE_URL}/province/`);
-      return { success: true, data: response.data, status: response.status };
+      const response = await axios.get(`${BASE_URL}/provinces/`);
+      const data = response.data?.results || response.data || [];
+      return { success: true, data, status: response.status };
     } catch (error) {
       return { success: true, data: [], status: error.response?.status || 500 };
     }
@@ -18,8 +15,15 @@ class UbicacionService {
 
   static async getLocalidades(provinciaId) {
     try {
-      const response = await axios.get(`${BASE_URL}/locality/`, { params: { province: provinciaId } });
-      return { success: true, data: response.data, status: response.status };
+      const response = await axios.get(`${BASE_URL}/localities/`);
+      let data = response.data?.results || response.data || [];
+      if (provinciaId) {
+        data = data.filter((loc) => {
+          const prov = loc.province?.id || loc.province;
+          return prov === provinciaId;
+        });
+      }
+      return { success: true, data, status: response.status };
     } catch (error) {
       return { success: true, data: [], status: error.response?.status || 500 };
     }
@@ -27,8 +31,15 @@ class UbicacionService {
 
   static async getDirecciones(localidadId) {
     try {
-      const response = await axios.get(`${BASE_URL}/address/`, { params: { locality: localidadId } });
-      return { success: true, data: response.data, status: response.status };
+      const response = await axios.get(`${BASE_URL}/addresses/`);
+      let data = response.data?.results || response.data || [];
+      if (localidadId) {
+        data = data.filter((addr) => {
+          const loc = addr.locality?.id || addr.locality;
+          return loc === localidadId;
+        });
+      }
+      return { success: true, data, status: response.status };
     } catch (error) {
       return { success: true, data: [], status: error.response?.status || 500 };
     }
@@ -36,8 +47,15 @@ class UbicacionService {
 
   static async getZonas(localidadId) {
     try {
-      const response = await axios.get(`${BASE_URL}/zone/`, { params: { locality: localidadId } });
-      return { success: true, data: response.data, status: response.status };
+      const response = await axios.get(`${BASE_URL}/zones/`);
+      let data = response.data?.results || response.data || [];
+      if (localidadId) {
+        data = data.filter((zone) => {
+          const loc = zone.locality?.id || zone.locality;
+          return loc === localidadId;
+        });
+      }
+      return { success: true, data, status: response.status };
     } catch (error) {
       return { success: true, data: [], status: error.response?.status || 500 };
     }

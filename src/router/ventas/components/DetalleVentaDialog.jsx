@@ -2,107 +2,138 @@ import { Dialog } from 'primereact/dialog';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
-import { Dropdown } from 'primereact/dropdown';
-import { InputNumber } from 'primereact/inputnumber';
 import { useState, useEffect } from 'react';
+import VentaService from '../services/VentaService';
+import PedidoService from '@/router/pedidos/services/PedidoService';
 
 const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
     const [detalles, setDetalles] = useState([]);
-    const [editingRows, setEditingRows] = useState({});
+    const [clienteNombre, setClienteNombre] = useState('-');
+    const [fechaVenta, setFechaVenta] = useState('-');
+    const [formaPago, setFormaPago] = useState('-');
+    const [total, setTotal] = useState(0);
 
-    // Mock productos para el dropdown
-    const productosDisponibles = [
-        { id: 1, name: 'Producto A', price: 100 },
-        { id: 2, name: 'Producto B', price: 200 },
-        { id: 3, name: 'Producto C', price: 300 },
-    ];
+    const mapDetalle = (d) => {
+        const producto = d.product || d.producto || d.product_data || { id: d.product_id, name: d.product_name };
+        const cantidad = d.quantity || d.cantidad || d.qty || 1;
+        const precioUnit = d.price ?? d.precio ?? d.precioUnitario ?? d.unit_price ?? d.unit_price_with_tax ?? d.product_price ?? producto.price ?? 0;
+        const subtotalRaw = d.subtotal ?? d.total ?? d.computed_subtotal ?? (precioUnit * cantidad);
+        const precioUnitNum = Number(precioUnit) || 0;
+        const subtotal = Number(subtotalRaw) || (precioUnitNum * (Number(cantidad) || 0));
+        return {
+            id: d.id || Date.now() + Math.random(),
+            producto,
+            cantidad,
+            precioUnitario: precioUnitNum,
+            subtotal
+        };
+    };
+
+    const extractOrderDetails = (orderData) => {
+        const candidates = [
+            orderData?.detalles,
+            orderData?.detail,
+            orderData?.details,
+            orderData?.items,
+            orderData?.order_items,
+            orderData?.orderDetails,
+            orderData?.order_details
+        ].filter(Array.isArray);
+        return candidates.length ? candidates[0] : [];
+    };
 
     useEffect(() => {
-        if (venta?.detalles) {
-            setDetalles(venta.detalles);
-        } else {
-            setDetalles([]);
-        }
+        const loadDetails = async () => {
+            if (!venta?.id) {
+                setDetalles([]);
+                setTotal(0);
+                return;
+            }
+            const resp = await VentaService.getDetailsBySaleId(venta.id);
+            if (resp.success) {
+                const list = resp.data || [];
+                if (list.length > 0) {
+                    const mapped = list.map(mapDetalle);
+                    setDetalles(mapped);
+                    setTotal(mapped.reduce((acc, it) => acc + (it.subtotal || 0), 0));
+                    return;
+                }
+            }
+
+            // Fallback: si no hay detalles de venta, mostrar los del pedido asociado
+            const orderId = venta?.order_id || venta?.order?.id;
+            if (orderId) {
+                try {
+                    const orderResp = await PedidoService.getById(orderId);
+                    if (orderResp.success) {
+                        const detallesPedido = extractOrderDetails(orderResp.data);
+                        const mapped = detallesPedido.map(mapDetalle);
+                        setDetalles(mapped);
+                        setTotal(mapped.reduce((acc, it) => acc + (it.subtotal || 0), 0));
+                        return;
+                    }
+                } catch (err) {
+                    /* ignore */
+                }
+            }
+
+            // Último recurso: usar detalle embebido en la venta si existe
+            if (venta?.detail) {
+                const mapped = (venta.detail || []).map(mapDetalle);
+                setDetalles(mapped);
+                setTotal(mapped.reduce((acc, it) => acc + (it.subtotal || 0), 0));
+            } else {
+                setDetalles([]);
+                setTotal(0);
+            }
+        };
+        loadDetails();
     }, [venta]);
 
-    const agregarItem = () => {
-        const nuevoItem = {
-            id: Date.now(),
-            producto: null,
-            cantidad: 1,
-            precioUnitario: 0,
-            subtotal: 0,
-            isNew: true
-        };
-        setDetalles([...detalles, nuevoItem]);
-    };
+    // Recalcular total si cambian los detalles (defensivo)
+    useEffect(() => {
+        const nuevoTotal = (detalles || []).reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0);
+        setTotal(nuevoTotal);
+    }, [detalles]);
 
-    const eliminarItem = (rowData) => {
-        setDetalles(detalles.filter(item => item.id !== rowData.id));
-    };
-
-    const onRowEditComplete = (e) => {
-        let _detalles = [...detalles];
-        let { newData, index } = e;
-
-        // Calcular subtotal
-        newData.subtotal = (newData.cantidad || 0) * (newData.precioUnitario || 0);
-
-        _detalles[index] = newData;
-        setDetalles(_detalles);
-    };
-
-    const productoEditor = (options) => {
-        return (
-            <Dropdown
-                value={options.value}
-                options={productosDisponibles}
-                onChange={(e) => {
-                    const producto = e.value;
-                    options.editorCallback(producto);
-                    // Auto-completar precio unitario
-                    if (producto) {
-                        const index = detalles.findIndex(d => d.id === options.rowData.id);
-                        if (index !== -1) {
-                            const newDetalles = [...detalles];
-                            newDetalles[index].precioUnitario = producto.price;
-                            newDetalles[index].subtotal = newDetalles[index].cantidad * producto.price;
-                            setDetalles(newDetalles);
-                        }
+    // Cargar datos del pedido asociado para mostrar cliente/fecha/forma de pago
+    useEffect(() => {
+        const loadOrder = async () => {
+            const orderId = venta?.order_id || venta?.order?.id;
+            if (!orderId) {
+                setClienteNombre('-');
+                setFechaVenta(venta?.date || venta?.fecha || '-');
+                setFormaPago(venta?.payment_method || venta?.formaPago || '-');
+                return;
+            }
+            try {
+                const resp = await PedidoService.getById(orderId);
+                if (resp.success) {
+                    const order = resp.data;
+                    const customer = order?.customer || order?.cliente;
+                    const fullName = customer ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() : '-';
+                    setClienteNombre(fullName || '-');
+                    setFechaVenta(order?.date || order?.fechaPedido || venta?.date || '-');
+                    setFormaPago(order?.payment_method || venta?.payment_method || venta?.formaPago || '-');
+                    if (!detalles.length) {
+                        const detallesPedido = extractOrderDetails(order);
+                        const mapped = detallesPedido.map(mapDetalle);
+                        setDetalles(mapped);
+                        setTotal(mapped.reduce((acc, it) => acc + (it.subtotal || 0), 0));
                     }
-                }}
-                optionLabel="name"
-                placeholder="Seleccione producto"
-                className="w-full"
-            />
-        );
-    };
-
-    const cantidadEditor = (options) => {
-        return (
-            <InputNumber
-                value={options.value}
-                onValueChange={(e) => options.editorCallback(e.value)}
-                min={1}
-                showButtons
-                className="w-full"
-            />
-        );
-    };
-
-    const precioEditor = (options) => {
-        return (
-            <InputNumber
-                value={options.value}
-                onValueChange={(e) => options.editorCallback(e.value)}
-                mode="currency"
-                currency="ARS"
-                locale="es-AR"
-                min={0}
-                className="w-full"
-            />
-        );
-    };
+                } else {
+                    setClienteNombre('-');
+                    setFechaVenta(venta?.date || venta?.fecha || '-');
+                    setFormaPago(venta?.payment_method || venta?.formaPago || '-');
+                }
+            } catch (err) {
+                setClienteNombre('-');
+                setFechaVenta(venta?.date || venta?.fecha || '-');
+                setFormaPago(venta?.payment_method || venta?.formaPago || '-');
+            }
+        };
+        loadOrder();
+    }, [venta]);
 
     const productoBodyTemplate = (rowData) => {
         return rowData.producto?.name || '-';
@@ -114,17 +145,6 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
 
     const subtotalBodyTemplate = (rowData) => {
         return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.subtotal || 0);
-    };
-
-    const accionesBodyTemplate = (rowData) => {
-        return (
-            <Button
-                icon="pi pi-trash"
-                className="p-button-rounded p-button-danger p-button-text"
-                onClick={() => eliminarItem(rowData)}
-                tooltip="Eliminar item"
-            />
-        );
     };
 
     const calcularTotal = () => {
@@ -185,19 +205,19 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
                 <div className="col-12 md:col-6">
                     <div className="field">
                         <label className="font-bold">Cliente</label>
-                        <div className="text-lg">{venta?.cliente || '-'}</div>
+                        <div className="text-lg">{clienteNombre}</div>
                     </div>
                 </div>
                 <div className="col-12 md:col-3">
                     <div className="field">
                         <label className="font-bold">Fecha</label>
-                        <div className="text-lg">{venta?.fecha || '-'}</div>
+                        <div className="text-lg">{fechaVenta || '-'}</div>
                     </div>
                 </div>
                 <div className="col-12 md:col-3">
                     <div className="field">
                         <label className="font-bold">Forma de Pago</label>
-                        <div className="text-lg">{venta?.formaPago || '-'}</div>
+                        <div className="text-lg">{formaPago || '-'}</div>
                     </div>
                 </div>
             </div>
@@ -205,59 +225,41 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
             <div className="field">
                 <div className="flex justify-content-between align-items-center mb-2">
                     <label className="font-bold text-lg">Items de la Venta</label>
-                    <Button
-                        label="Agregar Item"
-                        icon="pi pi-plus"
-                        className="p-button-sm p-button-success"
-                        onClick={agregarItem}
-                    />
                 </div>
 
                 <DataTable
                     value={detalles}
-                    editMode="row"
                     dataKey="id"
-                    onRowEditComplete={onRowEditComplete}
                     emptyMessage="No hay items en esta venta"
                     className="p-datatable-sm"
                 >
                     <Column
-                        field="producto"
                         header="Producto"
                         body={productoBodyTemplate}
-                        editor={productoEditor}
-                        style={{ width: '30%' }}
+                        style={{ width: '40%' }}
                     />
                     <Column
-                        field="cantidad"
                         header="Cantidad"
-                        editor={cantidadEditor}
+                        body={(rowData) => rowData.cantidad}
                         style={{ width: '15%' }}
                     />
                     <Column
-                        field="precioUnitario"
                         header="Precio Unitario"
                         body={precioBodyTemplate}
-                        editor={precioEditor}
                         style={{ width: '20%' }}
                     />
                     <Column
-                        field="subtotal"
                         header="Subtotal"
                         body={subtotalBodyTemplate}
                         style={{ width: '20%' }}
                     />
-                    <Column
-                        rowEditor
-                        headerStyle={{ width: '10%', minWidth: '8rem' }}
-                        bodyStyle={{ textAlign: 'center' }}
-                    />
-                    <Column
-                        body={accionesBodyTemplate}
-                        exportable={false}
-                        style={{ width: '5%' }}
-                    />
                 </DataTable>
+            </div>
+
+            <div className="flex justify-content-end mt-3">
+                <div className="text-xl font-bold">
+                    Total: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(total)}
+                </div>
             </div>
         </Dialog>
     );

@@ -14,7 +14,12 @@ const useClienteStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await ClienteService.getAll();
-      set({ clientes: response.data, loading: false });
+      if (!response?.success) {
+        set({ error: response?.error || 'Error al obtener clientes', loading: false });
+        return;
+      }
+      const list = response?.data?.results || response?.data || [];
+      set({ clientes: Array.isArray(list) ? list : [], loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
     }
@@ -80,7 +85,8 @@ const useClienteStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await ClienteService.search(query);
-      set({ clientes: response.data, loading: false });
+      const list = response?.data?.results || response?.data || [];
+      set({ clientes: Array.isArray(list) ? list : [], loading: false });
     } catch (error) {
       set({ error: error.message, loading: false });
     }
