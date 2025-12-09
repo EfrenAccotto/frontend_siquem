@@ -92,10 +92,11 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
 
   const resolveCliente = (clienteData) => {
     if (!clienteData) return null;
-    const id = clienteData.id || clienteData.clienteId || clienteData;
+    const candidate = clienteData.customer || clienteData;
+    const id = candidate.id || candidate.clienteId || candidate;
     const foundById = clientes.find((c) => c.id === id);
     if (foundById) return foundById;
-    return clienteData;
+    return candidate;
   };
 
   useEffect(() => {
@@ -103,7 +104,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     const init = async () => {
       await fetchClientes();
       const productos = await loadProductos(); // productos frescos
-      await loadPedidos();
+      const pedidos = await loadPedidos();
 
       if (!mounted) return;
 
@@ -117,25 +118,83 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
         pedido: null
       };
 
+      const findPedido = (pid) => {
+        if (!pid) return null;
+        if (Array.isArray(pedidos)) {
+          const found = pedidos.find((p) => p.id === pid);
+          if (found) return found;
+        }
+        if (Array.isArray(pedidosDisponibles)) {
+          const foundState = pedidosDisponibles.find((p) => p.id === pid);
+          if (foundState) return foundState;
+        }
+        return null;
+      };
+
+      const ensureClienteOption = (cli) => {
+        if (!cli || !cli.id) return;
+        const exists = (clientes || []).some((c) => c.id === cli.id);
+        if (!exists) {
+          useClienteStore.setState((state) => ({
+            clientes: [...(state.clientes || []), cli]
+          }));
+        }
+      };
+
       if (venta) {
-        const detalleVenta = await fetchVentaDetalle(venta.id);
+        // Traer detalles (usa los ya cargados si vienen en la venta)
+        let detalleVenta = Array.isArray(venta.detail) && venta.detail.length
+          ? venta.detail
+          : [];
+        if (!detalleVenta.length && venta.id) {
+          detalleVenta = await fetchVentaDetalle(venta.id);
+        }
+
+        // Traer el pedido completo para precargar cliente/pedido (si solo viene order_id)
+        let pedidoSeleccionado = venta.order || venta.pedido || findPedido(venta.order_id) || null;
+        if (!pedidoSeleccionado && venta.order_id) {
+          const fetchedOrder = await fetchPedidoDetalle(venta.order_id);
+          if (fetchedOrder) pedidoSeleccionado = fetchedOrder;
+          else pedidoSeleccionado = { id: venta.order_id }; // al menos conservar el id
+        }
+
+        // Si lo obtuvimos por fuera de la lista, asegurarlo en el dropdown
+        if (pedidoSeleccionado && !findPedido(pedidoSeleccionado.id)) {
+          setPedidosDisponibles((prev) => {
+            const exists = (prev || []).some((p) => p.id === pedidoSeleccionado.id);
+            const nextList = exists ? prev : [...(prev || []), pedidoSeleccionado];
+            // Usar la misma referencia que queda en el estado para la selección
+            const matched = nextList.find((p) => p.id === pedidoSeleccionado.id) || pedidoSeleccionado;
+            pedidoSeleccionado = matched;
+            return nextList;
+          });
+        }
+
         const ventaConDetalle = {
           ...venta,
           detalle: detalleVenta,
           detalles: detalleVenta,
           detail: detalleVenta
         };
-        const itemsVenta = buildItemsFromPedido(ventaConDetalle, productos);
-        const totalVenta = itemsVenta.reduce((acc, item) => acc + item.subtotal, 0);
+        // Usa pedido si lo tenemos; si no, la propia venta con detalle
+        const sourceItems = pedidoSeleccionado
+          ? { ...pedidoSeleccionado, detalle: detalleVenta, detalles: detalleVenta, items: detalleVenta }
+          : ventaConDetalle;
+        const itemsVenta = buildItemsFromPedido(sourceItems, productos);
+        const totalVenta = recalcTotal(itemsVenta);
+        const clienteResolved = resolveCliente(
+          pedidoSeleccionado?.customer || pedidoSeleccionado?.cliente || venta.cliente || venta.customer
+        );
+        ensureClienteOption(clienteResolved);
         setFormData({
           ...baseForm,
-          cliente: resolveCliente(venta.cliente),
-          fecha: venta.fecha ? new Date(venta.fecha) : new Date(),
-          formaPago: venta.formaPago || 'efectivo',
+          cliente: clienteResolved,
+          fecha: venta.date ? new Date(venta.date) : (venta.fecha ? new Date(venta.fecha) : new Date()),
+          formaPago: venta.payment_method || venta.formaPago || 'efectivo',
           items: itemsVenta,
           detalles: itemsVenta,
           total: totalVenta,
-          pedido: venta.order || null
+          pedido: pedidoSeleccionado
         });
       } else if (pedido) {
         let pedidoCompleto = pedido;
@@ -145,7 +204,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
           if (fetched) pedidoCompleto = fetched;
         }
         const itemsPedido = buildItemsFromPedido(pedidoCompleto, productos);
-        const totalPedido = itemsPedido.reduce((acc, item) => acc + item.subtotal, 0);
+        const totalPedido = recalcTotal(itemsPedido);
         setFormData({
           ...baseForm,
           cliente: resolveCliente(pedidoCompleto?.customer || pedidoCompleto?.cliente),
@@ -172,7 +231,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, fetchClientes, venta, pedido, clientes]);
+  }, [visible, venta?.id, pedido?.id]);
 
   const loadProductos = async () => {
     try {
@@ -188,17 +247,19 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     return [];
   };
 
-  const loadPedidos = async () => {
-    try {
-      const response = await PedidoService.getAll();
-      if (response.success) {
-        const list = response.data?.results || response.data || [];
-        setPedidosDisponibles(list);
-      }
-    } catch (error) {
-      console.error("Error loading orders", error);
+const loadPedidos = async () => {
+  try {
+    const response = await PedidoService.getAll();
+    if (response.success) {
+      const list = response.data?.results || response.data || [];
+      setPedidosDisponibles(list);
+      return list;
     }
-  };
+  } catch (error) {
+    console.error("Error loading orders", error);
+  }
+  return [];
+};
 
   const fetchPedidoDetalle = async (pedidoId) => {
     try {
@@ -225,6 +286,34 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     return [];
   };
 
+  const recalcTotal = (itemsList = []) => {
+    return (itemsList || []).reduce((acc, item) => {
+      const qty = item.cantidad ?? item.quantity ?? 1;
+      const price = item.precioUnitario ?? item.product_price ?? item.producto?.price ?? item.product?.price ?? 0;
+      const subtotal = item.subtotal ?? price * qty;
+      return acc + (Number(subtotal) || 0);
+    }, 0);
+  };
+
+  const handleItemChange = (itemId, changes = {}) => {
+    setFormData((prev) => {
+      const updatedItems = (prev.items || []).map((item) => {
+        if (item.id !== itemId) return item;
+        const next = { ...item, ...changes };
+        const qty = next.cantidad ?? next.quantity ?? 1;
+        const price = next.precioUnitario ?? next.product_price ?? next.producto?.price ?? next.product?.price ?? 0;
+        const subtotal = changes.subtotal ?? next.subtotal ?? price * qty;
+        return { ...next, cantidad: qty, subtotal };
+      });
+      return {
+        ...prev,
+        items: updatedItems,
+        detalles: updatedItems,
+        total: recalcTotal(updatedItems)
+      };
+    });
+  };
+
   const handleAddItem = () => {
     if (!selectedProducto || (cantidad || 0) <= 0) return;
 
@@ -239,7 +328,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
 
     setFormData(prev => {
       const newItems = [...prev.items, newItem];
-      const newTotal = newItems.reduce((acc, item) => acc + item.subtotal, 0);
+      const newTotal = recalcTotal(newItems);
       return {
         ...prev,
         items: newItems,
@@ -255,7 +344,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
   const handleRemoveItem = (rowData) => {
     setFormData(prev => {
       const newItems = prev.items.filter(item => item.id !== rowData.id);
-      const newTotal = newItems.reduce((acc, item) => acc + item.subtotal, 0);
+      const newTotal = recalcTotal(newItems);
       return {
         ...prev,
         items: newItems,
@@ -276,7 +365,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       if (fetched) fullOrder = fetched;
     }
     const itemsPedido = buildItemsFromPedido(fullOrder, productos);
-    const totalPedido = itemsPedido.reduce((acc, item) => acc + item.subtotal, 0);
+    const totalPedido = recalcTotal(itemsPedido);
     setFormData((prev) => ({
       ...prev,
       pedido: fullOrder,
@@ -302,7 +391,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       const fetched = await fetchPedidoDetalle(pedidoSel.id);
       if (fetched) fullOrder = fetched;
       const itemsPedido = buildItemsFromPedido(fullOrder, productos);
-      const totalPedido = itemsPedido.reduce((acc, item) => acc + item.subtotal, 0);
+      const totalPedido = recalcTotal(itemsPedido);
       setFormData((prev) => ({
         ...prev,
         pedido: fullOrder,
@@ -328,18 +417,38 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     const payload = {
       order_id: pedidoTarget.id,
       total_price: isNaN(totalParsed) ? 0 : Number(totalParsed.toFixed(2)),
-      date: formData.fecha?.toISOString?.().slice(0, 10) || formData.fecha
+      date: formData.fecha?.toISOString?.().slice(0, 10) || formData.fecha,
+      payment_method: formData.formaPago
     };
     onSave(payload, formData.items);
   };
 
-  const precioTemplate = (rowData) => {
-    const price = rowData.precioUnitario ?? rowData.producto?.price ?? 0;
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
-  };
+  const renderCantidadInput = (rowData) => (
+    <InputNumber
+      value={rowData.cantidad ?? rowData.quantity ?? 1}
+      onValueChange={(e) => handleItemChange(rowData.id, { cantidad: e.value })}
+      showButtons
+      min={1}
+      className="w-full"
+    />
+  );
+
+  const renderPrecioInput = (rowData) => (
+    <InputNumber
+      value={rowData.precioUnitario ?? rowData.product_price ?? rowData.producto?.price ?? rowData.product?.price ?? 0}
+      onValueChange={(e) => handleItemChange(rowData.id, { precioUnitario: e.value })}
+      mode="currency"
+      currency="ARS"
+      locale="es-AR"
+      className="w-full"
+    />
+  );
 
   const subtotalTemplate = (rowData) => {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.subtotal);
+    const qty = rowData.cantidad ?? rowData.quantity ?? 1;
+    const price = rowData.precioUnitario ?? rowData.product_price ?? rowData.producto?.price ?? rowData.product?.price ?? 0;
+    const subtotal = rowData.subtotal ?? price * qty;
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(subtotal);
   };
 
   const footer = (
@@ -359,7 +468,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     <Dialog
       visible={visible}
       style={{ width: '850px' }}
-      header="Nueva Venta"
+      header={venta ? 'Editar Venta' : 'Nueva Venta'}
       modal
       className="p-fluid"
       footer={footer}
@@ -466,8 +575,8 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
               header="Producto"
               body={(rowData) => rowData.producto?.name || rowData.product?.name || 'Sin nombre'}
             ></Column>
-            <Column field="cantidad" header="Cant." style={{ width: '10%' }}></Column>
-            <Column header="Precio Unit." body={precioTemplate}></Column>
+            <Column header="Cant." body={renderCantidadInput} style={{ width: '12%' }}></Column>
+            <Column header="Precio Unit." body={renderPrecioInput}></Column>
             <Column header="Subtotal" body={subtotalTemplate}></Column>
             <Column
               body={(rowData) => (

@@ -106,7 +106,7 @@ class ClienteService {
 
   static async partialUpdate(id, clienteData) {
     try {
-      const response = await axios.patch(`${CLIENTES_ENDPOINT}${id}/`, clienteData);
+      const response = await axios.patch(`${CLIENTES_ENDPOINT}/${id}/`, clienteData);
       return {
         success: true,
         data: response.data,
@@ -125,7 +125,7 @@ class ClienteService {
 
   static async delete(id) {
     try {
-      const response = await axios.delete(`${CLIENTES_ENDPOINT}${id}/`);
+      const response = await axios.delete(`${CLIENTES_ENDPOINT}/${id}/`);
       return {
         success: true,
         status: response.status,

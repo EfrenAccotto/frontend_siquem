@@ -28,6 +28,15 @@ const ReporteView = () => {
         { label: 'Excel', value: 'excel', icon: 'pi pi-file-excel' }
     ];
 
+    const formatDateOnly = (value) => {
+        if (!value) return null;
+        const date = new Date(value);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = String(date.getFullYear()).slice(-2);
+        return `${day}-${month}-${year}`;
+    };
+
     const handleExportar = () => {
         // Validar que se hayan seleccionado todos los campos
         if (!tipoReporte) {
@@ -60,13 +69,15 @@ const ReporteView = () => {
             return;
         }
 
-        // Aquí iría la lógica de exportación
-        console.log('Exportando reporte:', {
+        const payload = {
             tipo: tipoReporte,
-            desde: fechaDesde,
-            hasta: fechaHasta,
+            desde: formatDateOnly(fechaDesde),
+            hasta: formatDateOnly(fechaHasta),
             formato: formatoExportacion
-        });
+        };
+
+        // Aquí iría la lógica de exportación
+        console.log('Exportando reporte:', payload);
 
         toast.current?.show({
             severity: 'success',

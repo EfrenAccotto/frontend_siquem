@@ -25,6 +25,12 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const [localidades, setLocalidades] = useState([]);
   const [localidadSuggestions, setLocalidadSuggestions] = useState([]);
 
+  const localityIdFromValue = (loc) => {
+    if (!loc) return null;
+    if (typeof loc === 'number' || typeof loc === 'string') return loc;
+    return loc.value || loc.id || loc.locality_id || null;
+  };
+
   const mapProvincias = (items = []) =>
     (items || []).map((p) => ({
       label: p.name || p.label || p,
@@ -91,29 +97,47 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   };
 
   useEffect(() => {
-    if (visible) {
-      loadProvincias();
-      const nextForm = {
+    if (!visible) return;
+
+    const initForm = async () => {
+      await loadProvincias();
+      const provinceId = cliente?.address?.locality?.province?.id || null;
+      const localityId = cliente?.address?.locality?.id || null;
+      const baseForm = {
         first_name: cliente?.first_name || '',
         last_name: cliente?.last_name || '',
         phone_number: cliente?.phone_number || '',
         dni: cliente?.dni || '',
-        province: cliente?.address?.locality?.province?.id || null,
-        locality: cliente?.address?.locality?.id || null,
+        province: provinceId,
+        locality: localityId,
         street: cliente?.address?.street || '',
         number: cliente?.address?.number || '',
         floor: cliente?.address?.floor || '',
         apartment: cliente?.address?.apartment || ''
       };
-      setFormData(nextForm);
-      if (nextForm.province) {
-        handleProvinciaChange(nextForm.province);
+      setFormData(baseForm);
+      setErrors({});
+
+      if (provinceId) {
+        const response = await UbicacionService.getLocalidades(provinceId);
+        if (response.success) {
+          const list = response.data || [];
+          const mapped = mapLocalidades(list);
+          setLocalidades(mapped);
+          setLocalidadSuggestions(mapped);
+          const selectedLoc = mapped.find((loc) => loc.value === localityId || loc.id === localityId);
+          setFormData((prev) => ({
+            ...prev,
+            locality: selectedLoc || localityId
+          }));
+        }
       } else {
         setLocalidades([]);
         setLocalidadSuggestions([]);
       }
-      setErrors({});
-    }
+    };
+
+    initForm();
   }, [visible, cliente]);
 
   const handleChange = (name, value) => {
@@ -169,6 +193,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validate()) {
+      const localityId = localityIdFromValue(formData.locality);
       const dataToSave = {
         first_name: formData.first_name.trim(),
         last_name: formData.last_name.trim(),
@@ -179,7 +204,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
           number: formData.number.trim(),
           floor: formData.floor || '',
           apartment: formData.apartment || '',
-          locality_id: formData.locality?.value || formData.locality || null
+          locality_id: localityId || null
         }
       };
       onSave(dataToSave);

@@ -52,6 +52,15 @@ class VentaService {
     }
   }
 
+  static async getById(id) {
+    try {
+      const response = await axios.get(`${VENTAS_ENDPOINT}/${id}/`);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data || `Error al obtener venta ${id}`, status: error.response?.status || 500 };
+    }
+  }
+
   static async delete(id) {
     try {
       const response = await axios.delete(`${VENTAS_ENDPOINT}/${id}/`);
@@ -78,6 +87,24 @@ class VentaService {
       return { success: true, data: results, status: response.status };
     } catch (error) {
       return { success: false, error: error.response?.data || `Error al obtener detalles de la venta ${saleId}`, status: error.response?.status || 500 };
+    }
+  }
+
+  static async deleteDetail(detailId) {
+    try {
+      const response = await axios.delete(`${VENTA_DETAILS_ENDPOINT}/${detailId}/`);
+      return { success: true, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data || `Error al eliminar detalle ${detailId}`, status: error.response?.status || 500 };
+    }
+  }
+
+  static async updateDetail(detailId, detailData) {
+    try {
+      const response = await axios.put(`${VENTA_DETAILS_ENDPOINT}/${detailId}/`, detailData);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data || `Error al actualizar detalle ${detailId}`, status: error.response?.status || 500 };
     }
   }
 }
