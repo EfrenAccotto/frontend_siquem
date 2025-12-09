@@ -177,28 +177,23 @@ const PedidoView = () => {
 
   const handleGenerarRemito = async () => {
     if (!selectedPedido) return;
-    const base = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
-    const url = `${base}/remito/${selectedPedido.id}`;
     try {
-      const resp = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_id: selectedPedido.id })
-      });
-      if (!resp.ok) {
-        const errBody = await resp.json().catch(() => ({}));
-        const msg = errBody?.detail || errBody?.error || `Error HTTP ${resp.status}`;
-        throw new Error(msg);
+      const response = await PedidoService.generateRemito(selectedPedido.id);
+      if (response.success) {
+        const blob = new Blob([response.data], { type: 'application/pdf' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `remito_pedido_${selectedPedido.id}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else {
+        throw new Error(response.error);
       }
-      toast.current?.show({
-        severity: 'success',
-        summary: 'Éxito',
-        detail: 'Remito generado correctamente',
-        life: 3000
-      });
     } catch (error) {
-      const detail = error?.message || 'No se pudo generar el remito.';
-      toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 4000 });
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: `No se pudo generar el remito: ${error.message}`, life: 4000 });
     }
   };
 

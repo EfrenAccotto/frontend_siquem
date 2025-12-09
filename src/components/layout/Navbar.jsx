@@ -185,7 +185,7 @@ const AppNavbar = () => {
         onClick={toggleTheme}
       />
 
-      {/* Notificaciones */}
+      {/* Notificaciones (Comentado para hacerlo luego, pero funcionando)
       <div className="relative">
         <Menu
           model={getNotificationItems(notifications)}
@@ -209,7 +209,7 @@ const AppNavbar = () => {
             />
           )}
         </Button>
-      </div>
+      </div> */}
 
       {/* Perfil de usuario */}
       <SplitButton
