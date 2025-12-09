@@ -5,6 +5,7 @@ import ProductoService from '../services/ProductoService';
 import ProductoForm from '../components/ProductoForm';
 import { Toast } from 'primereact/toast';
 import { Dropdown } from 'primereact/dropdown';
+import { confirmDialog } from 'primereact/confirmdialog';
 
 const Columns = [
   { field: 'name', header: 'Nombre', style: { width: '20%' } },
@@ -54,6 +55,7 @@ const ProductoView = () => {
   const [productoEditando, setProductoEditando] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [formBusy, setFormBusy] = useState(false);
   const [filters, setFilters] = useState({ category: null, name: '' });
   const [categoryOptions, setCategoryOptions] = useState([]);
   const toast = useRef(null);
@@ -110,10 +112,21 @@ const ProductoView = () => {
   };
 
   const handleEditar = () => {
-    if (selectedProducto) {
-      setProductoEditando(selectedProducto);
-      setShowDialog(true);
-    }
+    if (!selectedProducto) return;
+    const fetchProducto = async () => {
+      setFormBusy(true);
+      try {
+        const resp = await ProductoService.getById(selectedProducto.id);
+        const data = resp.success ? resp.data : selectedProducto;
+        setProductoEditando(data);
+        setShowDialog(true);
+      } catch (error) {
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el producto', life: 3000 });
+      } finally {
+        setFormBusy(false);
+      }
+    };
+    fetchProducto();
   };
 
   const handleGuardar = async (formData) => {
@@ -161,24 +174,34 @@ const ProductoView = () => {
     }
   };
 
-  const handleEliminar = async () => {
-    if (selectedProducto) {
-      try {
-        const response = await ProductoService.delete(selectedProducto.id);
-        if (response.success) {
-          const refetch = await ProductoService.getAll();
-          const list = refetch?.data?.results || refetch?.data || [];
-          const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
-          setProductos(sorted);
-          setSelectedProducto(null);
-          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto eliminado', life: 3000 });
-        } else {
-          throw new Error(response.error || 'No se pudo eliminar');
-        }
-      } catch (error) {
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+  const eliminarSeleccionado = async () => {
+    if (!selectedProducto) return;
+    try {
+      const response = await ProductoService.delete(selectedProducto.id);
+      if (response.success) {
+        const refetch = await ProductoService.getAll();
+        const list = refetch?.data?.results || refetch?.data || [];
+        const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
+        setProductos(sorted);
+        setSelectedProducto(null);
+        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Producto eliminado', life: 3000 });
+      } else {
+        throw new Error(response.error || 'No se pudo eliminar');
       }
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
     }
+  };
+
+  const handleEliminar = () => {
+    if (!selectedProducto) return;
+    confirmDialog({
+      message: `¿Seguro que deseas eliminar "${selectedProducto.name}"?`,
+      header: 'Confirmar eliminación',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClassName: 'p-button-danger',
+      accept: eliminarSeleccionado
+    });
   };
 
   const filteredProductos = Array.isArray(productos)
@@ -242,7 +265,7 @@ const ProductoView = () => {
           setProductoEditando(null);
         }}
         onSave={handleGuardar}
-        loading={saving}
+        loading={saving || formBusy}
       />
     </div>
   );

@@ -51,6 +51,15 @@ class ProductoService {
     }
   }
 
+  static async getById(id) {
+    try {
+      const response = await axios.get(`${PRODUCTOS_ENDPOINT}/${id}/`);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data || `Error al obtener producto ${id}`, status: error.response?.status || 500 };
+    }
+  }
+
   static async delete(id) {
     try {
       const response = await axios.delete(`${PRODUCTOS_ENDPOINT}/${id}/`);

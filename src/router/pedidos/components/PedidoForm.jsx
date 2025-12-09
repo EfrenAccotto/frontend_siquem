@@ -30,21 +30,62 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const [selectedProducto, setSelectedProducto] = useState(null);
   const [cantidad, setCantidad] = useState(1);
 
+  const resolveClienteValue = (clienteRaw, clientesList = []) => {
+    if (!clienteRaw) return null;
+    const id = clienteRaw.id || clienteRaw.clienteId || clienteRaw;
+    const found = clientesList.find((c) => c.id === id);
+    return found || clienteRaw;
+  };
+
+  const resolveProducto = (prodValue, productosList = []) => {
+    if (!prodValue) return null;
+    if (typeof prodValue === 'object' && prodValue.name) {
+      return prodValue;
+    }
+    const prodId = prodValue.id || prodValue.product_id || prodValue.producto_id || prodValue;
+    const found = productosList.find((p) => p.id === prodId);
+    if (found) return found;
+    const prodName = prodValue.name || prodValue.product_name || `Producto ${prodId}`;
+    const prodPrice = prodValue.price || prodValue.product_price || prodValue.precio || 0;
+    return { id: prodId, name: prodName, price: prodPrice };
+  };
+
+  const mapItemsFromPedido = (pedidoData, productosList = []) => {
+    const detalles =
+      (Array.isArray(pedidoData?.detail) && pedidoData.detail) ||
+      (Array.isArray(pedidoData?.detalles) && pedidoData.detalles) ||
+      (Array.isArray(pedidoData?.items) && pedidoData.items) ||
+      [];
+
+    return detalles.map((d) => {
+      const productoResuelto = resolveProducto(
+        d.product || d.producto || d.product_id || d.producto_id,
+        productosList
+      );
+      const qty = d.quantity || d.cantidad || 1;
+      return {
+        id: d.id || Date.now() + Math.random(),
+        producto: productoResuelto,
+        cantidad: qty
+      };
+    });
+  };
+
   useEffect(() => {
-    if (visible) {
-      fetchClientes();
-      loadProductos();
+    if (!visible) return;
+
+    const initForm = async () => {
+      await fetchClientes();
+      const clientesList = useClienteStore.getState()?.clientes || clientes;
+      const productosList = (await loadProductos()) || productos;
+      const clienteDelPedido = resolveClienteValue(pedido?.customer || pedido?.cliente, clientesList);
       if (pedido) {
         setFormData({
-          cliente: pedido.customer || pedido.cliente || null,
+          cliente: clienteDelPedido,
           observaciones: pedido.observations || pedido.observaciones || '',
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
-          items: (pedido.detail || pedido.detalles || pedido.items || []).map((d) => ({
-            id: d.id || Date.now() + Math.random(),
-            producto: d.product || d.producto || d.product_id || d.producto_id,
-            cantidad: d.quantity || d.cantidad || 1
-          }))
+          items: mapItemsFromPedido(pedido, productosList)
         });
       } else {
         setFormData({
@@ -57,18 +98,23 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       }
       setSelectedProducto(null);
       setCantidad(1);
-    }
+    };
+
+    initForm();
   }, [visible, fetchClientes, pedido]);
 
   const loadProductos = async () => {
     try {
       const resp = await ProductoService.getAll();
       if (resp.success) {
-        setProductos(resp.data || []);
+        const lista = resp.data || [];
+        setProductos(lista);
+        return lista;
       }
     } catch (err) {
       console.error('Error cargando productos', err);
     }
+    return productos;
   };
 
     const clienteLabel = (c) => `${c?.first_name || ''} ${c?.last_name || ''}`.trim() || c?.nombreCompleto || c?.name || 'Sin nombre';

@@ -4,12 +4,30 @@ import { useEffect, useState, useRef } from 'react';
 import ClienteService from '../services/ClienteService';
 import ClienteForm from '../components/ClienteForm';
 import { Toast } from 'primereact/toast';
+import { confirmDialog } from 'primereact/confirmdialog';
+
+const formatAddress = (cliente) => {
+  const address = cliente?.address;
+  if (!address) return 'Sin dirección';
+
+  const main = [address.street, address.number].filter(Boolean).join(' ').trim();
+  const location = [
+    address.locality?.name,
+    address.locality?.province?.name
+  ].filter(Boolean).join(', ');
+  const extra = [address.floor, address.apartment].filter(Boolean).join(' ').trim();
+
+  const locationText = location ? ` (${location})` : '';
+  const extraText = extra ? ` ${extra}` : '';
+  return `${main}${extraText}${locationText}`.trim() || 'Sin dirección';
+};
 
 const Columns = [
-  { field: 'first_name', header: 'Nombre', style: { width: '25%' } },
-  { field: 'last_name', header: 'Apellido', style: { width: '25%' } },
-  { field: 'phone_number', header: 'Teléfono', style: { width: '20%' } },
-  { field: 'dni', header: 'DNI', style: { width: '20%' } },
+  { field: 'first_name', header: 'Nombre', style: { width: '18%' } },
+  { field: 'last_name', header: 'Apellido', style: { width: '18%' } },
+  { field: 'phone_number', header: 'Teléfono', style: { width: '18%' } },
+  { field: 'dni', header: 'DNI', style: { width: '16%' } },
+  { header: 'Dirección', body: formatAddress, style: { width: '30%' } },
 ];
 
 const ClienteView = () => {
@@ -127,22 +145,33 @@ const ClienteView = () => {
     }
   };
 
-  const handleEliminar = async () => {
-    if (selectedCliente) {
-      try {
-        const response = await ClienteService.delete(selectedCliente.id);
-        if (response.success) {
-          const updatedClientes = clientes.filter(c => c.id !== selectedCliente.id);
-          setClientes(updatedClientes);
-          setSelectedCliente(null);
-          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente eliminado', life: 3000 });
-        } else {
-          throw new Error(response.error);
-        }
-      } catch (error) {
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+  const eliminarSeleccionado = async () => {
+    if (!selectedCliente) return;
+    try {
+      const response = await ClienteService.delete(selectedCliente.id);
+      if (response.success) {
+        const updatedClientes = clientes.filter(c => c.id !== selectedCliente.id);
+        setClientes(updatedClientes);
+        setSelectedCliente(null);
+        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cliente eliminado', life: 3000 });
+      } else {
+        throw new Error(response.error);
       }
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
     }
+  };
+
+  const handleEliminar = () => {
+    if (!selectedCliente) return;
+    const nombre = `${selectedCliente.first_name || ''} ${selectedCliente.last_name || ''}`.trim() || 'este cliente';
+    confirmDialog({
+      message: `¿Seguro que deseas eliminar a ${nombre}?`,
+      header: 'Confirmar eliminación',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClassName: 'p-button-danger',
+      accept: eliminarSeleccionado
+    });
   };
 
   const filteredClientes = Array.isArray(clientes)

@@ -11,6 +11,7 @@ import useClienteStore from '@/store/useClienteStore';
 import { Button } from 'primereact/button';
 import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
+import { confirmDialog } from 'primereact/confirmdialog';
 
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
@@ -34,6 +35,9 @@ const PedidoView = () => {
   const [selectedPedido, setSelectedPedido] = useState(null);
   const [pedidos, setPedidos] = useState([]);
   const [pedidoEditando, setPedidoEditando] = useState(null);
+  const [pedidoDetalle, setPedidoDetalle] = useState(null);
+  const [detalleLoading, setDetalleLoading] = useState(false);
+  const [pedidoDialogLoading, setPedidoDialogLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingVenta, setSavingVenta] = useState(false);
   const [pedidoParaVenta, setPedidoParaVenta] = useState(null);
@@ -125,52 +129,89 @@ const PedidoView = () => {
     return [main, extra].filter(Boolean).join(' ').trim() || null;
   };
 
-  const handleEditar = () => {
-    if (selectedPedido) {
-      setPedidoEditando(selectedPedido);
+  const mapPedidoDetalle = (pedidoData = {}) => {
+    const detalles =
+      (Array.isArray(pedidoData.detail) && pedidoData.detail) ||
+      (Array.isArray(pedidoData.detalle) && pedidoData.detalle) ||
+      (Array.isArray(pedidoData.detalles) && pedidoData.detalles) ||
+      (Array.isArray(pedidoData.items) && pedidoData.items) ||
+      [];
+
+    const mapped = detalles.map((d) => {
+      const productId = d.product_id ?? d.product?.id ?? d.producto?.id ?? d.producto_id;
+      const productName = d.product_name || d.product?.name || d.producto?.name || (productId ? `Producto ${productId}` : 'Producto');
+      const qty = d.quantity ?? d.cantidad ?? 1;
+      const price = d.product_price ?? d.price ?? d.precio ?? d.product?.price ?? d.producto?.price ?? 0;
+      return {
+        ...d,
+        product_id: productId,
+        product_name: productName,
+        quantity: qty,
+        cantidad: qty,
+        product_price: price,
+        subtotal: d.subtotal ?? Number((price * qty).toFixed(2)),
+        producto: d.product || d.producto || (productId ? { id: productId, name: productName, price } : null)
+      };
+    });
+
+    const addr = pedidoData.shipping_address || pedidoData.customer?.address;
+    return {
+      ...pedidoData,
+      shipping_address_str: pedidoData.shipping_address_str || formatAddress(addr),
+      detail: mapped,
+      detalle: mapped,
+      detalles: mapped,
+      items: mapped
+    };
+  };
+
+  const handleEditar = async () => {
+    if (!selectedPedido) return;
+    setPedidoDialogLoading(true);
+    try {
+      const resp = await PedidoService.getById(selectedPedido.id);
+      const pedidoCompleto = resp.success ? mapPedidoDetalle(resp.data) : mapPedidoDetalle(selectedPedido);
+      setPedidoEditando(pedidoCompleto);
       setShowDialog(true);
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el pedido', life: 3000 });
+    } finally {
+      setPedidoDialogLoading(false);
     }
   };
 
   const handleVerDetalle = () => {
-    if (selectedPedido) {
-      setShowDetalleDialog(true);
-    }
+    if (!selectedPedido) return;
+    setDetalleLoading(true);
+    PedidoService.getById(selectedPedido.id)
+      .then((resp) => {
+        if (resp.success) {
+          const pedidoCompleto = mapPedidoDetalle(resp.data);
+          setPedidoDetalle(pedidoCompleto);
+        } else {
+          setPedidoDetalle(mapPedidoDetalle(selectedPedido));
+        }
+      })
+      .catch(() => {
+        setPedidoDetalle(mapPedidoDetalle(selectedPedido));
+      })
+      .finally(() => {
+        setShowDetalleDialog(true);
+        setDetalleLoading(false);
+      });
   };
 
   const handleGenerarVenta = () => {
     if (!selectedPedido) return;
     // fallback inicial en caso de que la carga detallada falle
-    setPedidoParaVenta(selectedPedido);
+    setPedidoParaVenta(mapPedidoDetalle(selectedPedido));
 
     PedidoService.getById(selectedPedido.id)
       .then((resp) => {
         if (resp.success) {
-          const pedidoData = resp.data;
-          const detalles = Array.isArray(pedidoData?.detail) ? pedidoData.detail : [];
-          const detallesEnriquecidos = detalles.map((d) => {
-            const price = d.product_price ?? 0;
-            const qty = d.quantity || 1;
-            return {
-              ...d,
-              producto: {
-                id: d.product_id,
-                name: d.product_name || `Producto ${d.product_id}`,
-                price
-              },
-              cantidad: qty,
-              subtotal: Number((price * qty).toFixed(2))
-            };
-          });
-          const enriched = {
-            ...pedidoData,
-            items: detallesEnriquecidos,
-            detalle: detallesEnriquecidos,
-            detail: detallesEnriquecidos,
-            detalles: detallesEnriquecidos
-          };
-          setSelectedPedido(enriched);
-          setPedidoParaVenta(enriched);
+          const pedidoCompleto = mapPedidoDetalle(resp.data);
+          setSelectedPedido(pedidoCompleto);
+          setPedidoParaVenta(pedidoCompleto);
         }
       })
       .finally(() => setShowVentaDialog(true));
@@ -342,11 +383,11 @@ const PedidoView = () => {
     });
   };
 
-  const handleEliminar = async () => {
-    if (selectedPedido) {
-      try {
-        const response = await PedidoService.delete(selectedPedido.id);
-        if (response.success) {
+  const eliminarSeleccionado = async () => {
+    if (!selectedPedido) return;
+    try {
+      const response = await PedidoService.delete(selectedPedido.id);
+      if (response.success) {
         setPedidos((prev) => prev.filter((p) => p.id !== selectedPedido.id));
         setSelectedPedido(null);
         PedidoService.getAll()
@@ -360,17 +401,27 @@ const PedidoView = () => {
               setPedidos(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
             }
           })
-            .catch(() => {
-              /* mantener lista local si falla */
-            });
-          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido eliminado', life: 3000 });
-        } else {
-          throw new Error(response.error);
-        }
-      } catch (error) {
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+          .catch(() => {
+            /* mantener lista local si falla */
+          });
+        toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido eliminado', life: 3000 });
+      } else {
+        throw new Error(response.error);
       }
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
     }
+  };
+
+  const handleEliminar = () => {
+    if (!selectedPedido) return;
+    confirmDialog({
+      message: `¿Seguro que deseas eliminar el pedido #${selectedPedido.id}?`,
+      header: 'Confirmar eliminación',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClassName: 'p-button-danger',
+      accept: eliminarSeleccionado
+    });
   };
 
   // Filtro cliente/estado/búsqueda en front para garantizar funcionamiento
@@ -505,7 +556,6 @@ const PedidoView = () => {
                   className="p-button-secondary p-button-raised"
                   onClick={handleGenerarVenta}
                   disabled={!selectedPedido}
-                  style={{ display: 'none' }}
                 />
               </>
             }
@@ -521,15 +571,20 @@ const PedidoView = () => {
         onHide={() => {
           setShowDialog(false);
           setPedidoEditando(null);
+          setPedidoDialogLoading(false);
         }}
         onSave={handleGuardar}
+        loading={pedidoDialogLoading}
       />
 
       <DetallePedidoDialog
         visible={showDetalleDialog}
-        pedido={selectedPedido}
-        onHide={() => setShowDetalleDialog(false)}
-        onSave={handleGuardarDetalle}
+        pedido={pedidoDetalle || mapPedidoDetalle(selectedPedido || {})}
+        loading={detalleLoading}
+        onHide={() => {
+          setShowDetalleDialog(false);
+          setPedidoDetalle(null);
+        }}
       />
 
       <VentaForm

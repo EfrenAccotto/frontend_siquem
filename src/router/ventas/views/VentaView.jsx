@@ -3,8 +3,10 @@ import { Toast } from 'primereact/toast';
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
 import VentaService from '../services/VentaService';
+import PedidoService from '@/router/pedidos/services/PedidoService';
 import VentaForm from '../components/VentaForm';
 import DetalleVentaDialog from '../components/DetalleVentaDialog';
+import { confirmDialog } from 'primereact/confirmdialog';
 
 const VentaView = () => {
   const toast = useRef(null);
@@ -14,6 +16,7 @@ const VentaView = () => {
   const [ventas, setVentas] = useState([]);
   const [ventaEditando, setVentaEditando] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [ventaDialogLoading, setVentaDialogLoading] = useState(false);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -73,10 +76,48 @@ const VentaView = () => {
     return [main, extra].filter(Boolean).join(' ').trim() || null;
   };
 
-  const handleEditar = () => {
-    if (selectedVenta) {
+  const handleEditar = async () => {
+    if (!selectedVenta) return;
+    setVentaDialogLoading(true);
+    try {
+      const resp = await VentaService.getById(selectedVenta.id);
+      const ventaBase = resp.success ? resp.data : selectedVenta;
+
+      // Traer detalle de la venta
+      let detalleVenta = Array.isArray(ventaBase.detail) ? ventaBase.detail : [];
+      try {
+        if (!detalleVenta.length) {
+          const detResp = await VentaService.getDetailsBySaleId(ventaBase.id);
+          if (detResp.success) detalleVenta = detResp.data || [];
+        }
+      } catch (err) {
+        /* continuar con lo que haya */
+      }
+
+      // Traer pedido completo si solo tenemos order_id
+      let pedidoFull = ventaBase.order || ventaBase.pedido || null;
+      if (!pedidoFull && ventaBase.order_id) {
+        const pedResp = await PedidoService.getById(ventaBase.order_id);
+        if (pedResp.success) pedidoFull = pedResp.data;
+      }
+
+      const addr = ventaBase.shipping_address || pedidoFull?.shipping_address || pedidoFull?.customer?.address;
+      setVentaEditando({
+        ...ventaBase,
+        order_id: ventaBase.order_id || ventaBase.order?.id || null,
+        detail: detalleVenta,
+        pedido: pedidoFull,
+        order: pedidoFull || ventaBase.order,
+        shipping_address_str: ventaBase.shipping_address_str || formatAddress(addr)
+      });
+      setShowDialog(true);
+    } catch (error) {
+      // Fallback: intentar abrir con la selección actual
       setVentaEditando(selectedVenta);
       setShowDialog(true);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar la venta completa; usando datos locales.', life: 3000 });
+    } finally {
+      setVentaDialogLoading(false);
     }
   };
 
@@ -87,22 +128,80 @@ const VentaView = () => {
   };
 
   const handleGuardar = async (salePayload, items = []) => {
+    const roundMoney = (val) => Number(Number(val ?? 0).toFixed(2));
+    const normalizeDetails = (saleId) => (itemsList = []) =>
+      (itemsList || []).map((item) => {
+        const qty = item.cantidad || item.quantity || 1;
+        const price = roundMoney(item.precioUnitario ?? item.producto?.price ?? item.product?.price ?? item.price ?? 0);
+        const subtotal = roundMoney(item.subtotal ?? price * qty);
+        return {
+          sale_id: saleId,
+          product_id: item.producto?.id || item.product_id || item.product?.id,
+          quantity: qty,
+          price,
+          subtotal
+        };
+      }).filter((d) => d.product_id);
+
     try {
       if (ventaEditando) {
         const response = await VentaService.update(ventaEditando.id, salePayload);
-        if (response.success) {
-        const updatedVentas = ventas
-          .map(v => {
-            if (v.id !== ventaEditando.id) return v;
-            const addr = salePayload.shipping_address || v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address;
-            return { ...v, ...salePayload, shipping_address_str: formatAddress(addr) };
-          })
-          .sort((a, b) => (b.id || 0) - (a.id || 0));
-        setVentas(updatedVentas);
-          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta actualizada', life: 3000 });
-        } else {
-          throw new Error(response.error);
+        if (!response.success) throw new Error(response.error);
+
+        // Reemplazar detalles: eliminar existentes y crear los nuevos
+        try {
+          const existing = await VentaService.getDetailsBySaleId(ventaEditando.id);
+          const list = existing?.data || [];
+          for (const det of list) {
+            if (det.id) await VentaService.deleteDetail(det.id);
+          }
+        } catch (err) {
+          /* continuar */
         }
+
+        const normalized = normalizeDetails(ventaEditando.id)(items);
+        const totalNormalized = normalized.reduce((acc, d) => acc + (Number(d.subtotal) || 0), 0);
+        for (const detailPayload of normalized) {
+          const respDetail = await VentaService.createDetail(detailPayload);
+          if (!respDetail.success) {
+            const errDet = typeof respDetail.error === 'string' ? respDetail.error : JSON.stringify(respDetail.error);
+            throw new Error(errDet || 'No se pudo guardar un detalle de venta');
+          }
+        }
+
+        // Refrescar venta puntual y lista para asegurar consistencia
+        const single = await VentaService.getById(ventaEditando.id);
+        if (single.success) {
+          setVentas((prev) => {
+            const filtered = (prev || []).filter((v) => v.id !== ventaEditando.id);
+            const enriched = {
+              ...single.data,
+              shipping_address_str: formatAddress(
+                single.data.shipping_address || single.data.shipping_address_str || single.data.order?.shipping_address || single.data.order?.customer?.address
+              ),
+              total_price: single.data?.total_price ?? totalNormalized
+            };
+            const next = [enriched, ...filtered];
+            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+          });
+        } else {
+          const refetch = await VentaService.getAll();
+          if (refetch.success) {
+            const list = refetch.data?.results || refetch.data || [];
+            const enhanced = Array.isArray(list)
+              ? list.map((v) => ({
+                  ...v,
+                  shipping_address_str: formatAddress(
+                    v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
+                ),
+                total_price: v.total_price ?? totalNormalized
+              }))
+              : [];
+            setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
+          }
+        }
+
+        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta actualizada', life: 3000 });
       } else {
         // Crear venta
         const response = await VentaService.create(salePayload);
@@ -113,32 +212,22 @@ const VentaView = () => {
 
         // Crear detalles de venta usando el sale_id devuelto
         const saleId = response.data?.id;
+        let normalized = [];
+        let totalNormalized = 0;
         if (saleId && Array.isArray(items) && items.length) {
-          // Evitar duplicar detalles si la venta ya tenía ítems (p.ej. generados desde el pedido)
-          let existingProductIds = new Set();
+          // Limpia cualquier detalle existente (defensivo, por si el backend crea por defecto)
           try {
             const existing = await VentaService.getDetailsBySaleId(saleId);
             const list = existing?.data || [];
-            existingProductIds = new Set(
-              list
-                .map((d) => d.product_id || d.product?.id)
-                .filter(Boolean)
-            );
+            for (const det of list) {
+              if (det.id) await VentaService.deleteDetail(det.id);
+            }
           } catch (err) {
-            // si falla, continuamos
+            /* continuar */
           }
 
-          const normalized = items.map((item) => {
-            const qty = item.cantidad || item.quantity || 1;
-            const price = item.precioUnitario ?? item.producto?.price ?? item.product?.price ?? 0;
-            return {
-              sale_id: saleId,
-              product_id: item.producto?.id || item.product_id || item.product?.id,
-              quantity: qty,
-              price,
-              subtotal: item.subtotal ?? price * qty
-            };
-          }).filter((d) => d.product_id && !existingProductIds.has(d.product_id));
+          normalized = normalizeDetails(saleId)(items);
+          totalNormalized = normalized.reduce((acc, d) => acc + (Number(d.subtotal) || 0), 0);
 
           for (const detailPayload of normalized) {
             const respDetail = await VentaService.createDetail(detailPayload);
@@ -149,24 +238,37 @@ const VentaView = () => {
           }
         }
 
-        setVentas((prev) => {
-          const enriched = {
-            ...response.data,
-            shipping_address_str: formatAddress(
-              response.data.shipping_address || response.data.shipping_address_str || response.data.order?.shipping_address || response.data.order?.customer?.address
-            )
-          };
-          const next = [enriched, ...(prev || [])];
-          return next.sort((a, b) => (b.id || 0) - (a.id || 0));
-        });
-        VentaService.getAll()
-          .then((refetch) => {
+        // Refrescar desde backend para asegurar que la venta y detalles aparezcan en tabla
+        const single = saleId ? await VentaService.getById(saleId) : null;
+        if (single?.success) {
+          setVentas((prev) => {
+            const filtered = (prev || []).filter((v) => v.id !== saleId);
+            const enriched = {
+              ...single.data,
+              shipping_address_str: formatAddress(
+                single.data.shipping_address || single.data.shipping_address_str || single.data.order?.shipping_address || single.data.order?.customer?.address
+              ),
+              total_price: single.data?.total_price ?? totalNormalized ?? salePayload.total_price
+            };
+            const next = [enriched, ...filtered];
+            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+          });
+        } else {
+          const refetch = await VentaService.getAll();
+          if (refetch.success) {
             const list = refetch?.data?.results || refetch?.data || [];
             if (Array.isArray(list) && list.length > 0) {
-              setVentas([...list].sort((a, b) => (b.id || 0) - (a.id || 0)));
+              const enhanced = list.map((v) => ({
+                ...v,
+                shipping_address_str: formatAddress(
+                  v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
+                ),
+                total_price: v.total_price ?? totalNormalized ?? salePayload.total_price
+              }));
+              setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
             }
-          })
-          .catch(() => { /* lista optimista */ });
+          }
+        }
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta creada correctamente', life: 3000 });
       }
 
@@ -194,35 +296,45 @@ const VentaView = () => {
     });
   };
 
-  const handleEliminar = async () => {
-    if (selectedVenta) {
-      try {
-        const response = await VentaService.delete(selectedVenta.id);
-        if (response.success) {
-          setVentas((prev) => prev.filter(v => v.id !== selectedVenta.id));
-          setSelectedVenta(null);
-          VentaService.getAll()
-            .then((refetch) => {
-              const list = refetch?.data?.results || refetch?.data || [];
-              if (Array.isArray(list) && list.length > 0) {
-                const enhanced = list.map((v) => ({
-                  ...v,
-                  shipping_address_str: formatAddress(
-                    v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
-                  )
-                }));
-                setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
-              }
-            })
-            .catch(() => { /* mantener lista local si falla */ });
-          toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta eliminada', life: 3000 });
-        } else {
-          throw new Error(response.error);
-        }
-      } catch (error) {
-        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar la venta', life: 3000 });
+  const eliminarSeleccionado = async () => {
+    if (!selectedVenta) return;
+    try {
+      const response = await VentaService.delete(selectedVenta.id);
+      if (response.success) {
+        setVentas((prev) => prev.filter(v => v.id !== selectedVenta.id));
+        setSelectedVenta(null);
+        VentaService.getAll()
+          .then((refetch) => {
+            const list = refetch?.data?.results || refetch?.data || [];
+            if (Array.isArray(list) && list.length > 0) {
+              const enhanced = list.map((v) => ({
+                ...v,
+                shipping_address_str: formatAddress(
+                  v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
+                )
+              }));
+              setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
+            }
+          })
+          .catch(() => { /* mantener lista local si falla */ });
+        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta eliminada', life: 3000 });
+      } else {
+        throw new Error(response.error);
       }
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar la venta', life: 3000 });
     }
+  };
+
+  const handleEliminar = () => {
+    if (!selectedVenta) return;
+    confirmDialog({
+      message: `¿Seguro que deseas eliminar la venta #${selectedVenta.id}?`,
+      header: 'Confirmar eliminación',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClassName: 'p-button-danger',
+      accept: eliminarSeleccionado
+    });
   };
 
   const filteredVentas = Array.isArray(ventas)
@@ -317,8 +429,10 @@ const VentaView = () => {
         onHide={() => {
           setShowDialog(false);
           setVentaEditando(null);
+          setVentaDialogLoading(false);
         }}
         onSave={handleGuardar}
+        loading={ventaDialogLoading}
       />
 
       <DetalleVentaDialog
