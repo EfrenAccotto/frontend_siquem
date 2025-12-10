@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Asegura que no haya doble slash si la env var trae la barra final
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
-const REPORTES_ENDPOINT = `${BASE_URL}/reportes`;
+const REPORTES_ENDPOINT = `${BASE_URL}/reports`;
 // Cambiado: usar el endpoint remito (remito/<order_id>/)
 const REMITO_ENDPOINT = `${BASE_URL}/remito`;
 
@@ -60,6 +60,66 @@ class ReporteService {
       };
     }
   }
-}
 
+  // Generar reporte basado en modelo y filtros
+  static async getReportByModel(modelo, formato = 'pdf', fechaDesde = null, fechaHasta = null, filtros = {}) {
+    try {
+      // Formatear fechas en DD/MM/YYYY como espera el backend
+      const formatDate = (date) => {
+        if (!date) return null;
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      const payload = {
+        modelo,
+        formato,
+        ...(fechaDesde && { fecha_inicio: formatDate(fechaDesde) }),
+        ...(fechaHasta && { fecha_fin: formatDate(fechaHasta) }),
+        filtros: Array.isArray(filtros) ? filtros : []
+      };
+      
+      console.log('Enviando payload:', payload);
+      
+      const response = await axios.post(`${REPORTES_ENDPOINT}/generate/`, payload, {
+        responseType: 'blob', // Importante para archivos binarios
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': '*/*' // Permitir cualquier tipo de respuesta
+        }
+      });
+      
+      return {
+        success: true,
+        data: response.data, // Blob data
+        status: response.status,
+        headers: response.headers
+      };
+    } catch (error) {
+      console.error('Error en ReporteService.getReportByModel:', error);
+      
+      // Si hay error de response, intentar leer el mensaje de error del blob
+      let errorMessage = `Error al generar reporte para el modelo: ${modelo}`;
+      if (error.response?.data && error.response.data instanceof Blob) {
+        try {
+          const errorText = await error.response.data.text();
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          console.warn('No se pudo parsear el error del blob:', parseError);
+        }
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
+      return {
+        success: false,
+        error: errorMessage,
+        status: error.response?.status || 500
+      };
+    }
+  }
+}
 export default ReporteService;

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+ import { useRef, useState } from 'react';
 import { Toast } from 'primereact/toast';
 import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
@@ -6,6 +6,7 @@ import { Button } from 'primereact/button';
 import { SelectButton } from 'primereact/selectbutton';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
+import ReporteService from '../services/ReporteService';
 
 const ReporteView = () => {
     const toast = useRef(null);
@@ -13,6 +14,7 @@ const ReporteView = () => {
     const [fechaDesde, setFechaDesde] = useState(null);
     const [fechaHasta, setFechaHasta] = useState(null);
     const [formatoExportacion, setFormatoExportacion] = useState('pdf');
+    const [loading, setLoading] = useState(false);
 
     // Opciones para el dropdown de tipo de reporte
     const tiposReporte = [
@@ -27,17 +29,7 @@ const ReporteView = () => {
         { label: 'PDF', value: 'pdf', icon: 'pi pi-file-pdf' },
         { label: 'Excel', value: 'excel', icon: 'pi pi-file-excel' }
     ];
-
-    const formatDateOnly = (value) => {
-        if (!value) return null;
-        const date = new Date(value);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = String(date.getFullYear()).slice(-2);
-        return `${day}-${month}-${year}`;
-    };
-
-    const handleExportar = () => {
+    const handleExportar = async () => {
         // Validar que se hayan seleccionado todos los campos
         if (!tipoReporte) {
             toast.current?.show({
@@ -49,17 +41,7 @@ const ReporteView = () => {
             return;
         }
 
-        if (!fechaDesde || !fechaHasta) {
-            toast.current?.show({
-                severity: 'warn',
-                summary: 'Advertencia',
-                detail: 'Debe seleccionar el rango de fechas',
-                life: 3000
-            });
-            return;
-        }
-
-        if (fechaDesde > fechaHasta) {
+        if (fechaDesde && fechaHasta && fechaDesde > fechaHasta) {
             toast.current?.show({
                 severity: 'error',
                 summary: 'Error',
@@ -68,23 +50,71 @@ const ReporteView = () => {
             });
             return;
         }
+        
+        try {
+            setLoading(true);
+            
+            // Mostrar loading
+            toast.current?.show({
+                severity: 'info',
+                summary: 'Procesando',
+                detail: 'Generando reporte...',
+                life: 2000
+            });
 
-        const payload = {
-            tipo: tipoReporte,
-            desde: formatDateOnly(fechaDesde),
-            hasta: formatDateOnly(fechaHasta),
-            formato: formatoExportacion
-        };
-
-        // Aquí iría la lógica de exportación
-        console.log('Exportando reporte:', payload);
-
-        toast.current?.show({
-            severity: 'success',
-            summary: 'Éxito',
-            detail: `Reporte de ${tipoReporte} exportado correctamente en formato ${formatoExportacion.toUpperCase()}`,
-            life: 3000
-        });
+            const response = await ReporteService.getReportByModel(
+                tipoReporte, 
+                formatoExportacion, 
+                fechaDesde, 
+                fechaHasta
+            );
+            
+            if (response.success && response.data) {
+                // El response.data ya es un Blob
+                const blob = response.data;
+                
+                // Verificar que el blob tenga contenido
+                if (blob.size === 0) {
+                    throw new Error('El archivo generado está vacío');
+                }
+                
+                // Generar nombre del archivo con timestamp
+                const timestamp = new Date().toISOString().split('T')[0];
+                const extension = formatoExportacion === 'pdf' ? 'pdf' : 'xlsx';
+                const filename = `reporte_${tipoReporte}_${timestamp}.${extension}`;
+                
+                // Crear URL y descargar
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                
+                // Cleanup
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Éxito',
+                    detail: `Reporte de ${tipoReporte} exportado correctamente`,
+                    life: 3000
+                });
+            } else {
+                throw new Error(response.error || 'Error desconocido al generar el reporte');
+            }
+        } catch (error) {
+            console.error('Error al exportar reporte:', error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Error',
+                detail: `Error al exportar el reporte: ${error.message}`,
+                life: 3000
+            });
+        } finally {
+            setLoading(false);
+        }
     };
 
     const formatOptionTemplate = (option) => {
@@ -182,10 +212,12 @@ const ReporteView = () => {
             {/* Botón Exportar */}
             <div className="flex justify-content-end">
                 <Button
-                    label="Exportar Reporte"
-                    icon="pi pi-file-export"
+                    label={loading ? "Generando..." : "Exportar Reporte"}
+                    icon={loading ? "pi pi-spin pi-spinner" : "pi pi-file-export"}
                     className="p-button-success"
                     onClick={handleExportar}
+                    disabled={loading}
+                    loading={loading}
                 />
             </div>
         </div>

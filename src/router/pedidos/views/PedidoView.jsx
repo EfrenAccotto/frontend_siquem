@@ -3,6 +3,7 @@ import { Toast } from 'primereact/toast';
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
 import PedidoService from '../services/PedidoService';
+import ReporteService from '@/router/reportes/services/ReporteService';
 import PedidoForm from '../components/PedidoForm';
 import DetallePedidoDialog from '../components/DetallePedidoDialog';
 import { Dropdown } from 'primereact/dropdown';
@@ -219,13 +220,13 @@ const PedidoView = () => {
   const handleGenerarRemito = async () => {
     if (!selectedPedido) return;
     try {
-      const response = await PedidoService.generateRemito(selectedPedido.id);
+      const response = await ReporteService.downloadByOrderId(selectedPedido.id);
       if (response.success) {
         const blob = new Blob([response.data], { type: 'application/pdf' });
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `remito_pedido_${selectedPedido.id}.pdf`);
+        link.setAttribute('download', `remito_pedido_${selectedPedido.id}_${selectedPedido.date}.pdf`);
         document.body.appendChild(link);
         link.click();
         link.parentNode.removeChild(link);
@@ -258,6 +259,7 @@ const PedidoView = () => {
         }
       } else {
         const response = await PedidoService.create(formData);
+        console.log('Respuesta de creación de pedido:', response);
         if (response.success) {
           setPedidos((prev) => {
             const enriched = {
