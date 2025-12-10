@@ -25,7 +25,7 @@ import HelpSupportDialog from './HelpSupportDialog';
 
 // Mapeo de rutas a títulos de página
 const PAGE_ROUTES = {
-  '/inicio': 'Dashboard Principal',
+  '/': 'Cooperativa La Soberana',
   '/clientes': 'Gestión de Clientes',
   '/productos': 'Inventario de Productos',
   '/ventas': 'Registro de Ventas',
@@ -52,11 +52,11 @@ const getPageTitle = (pathname) => {
  * @returns {Array} Array de items del menú
  */
 const getUserMenuItems = (onHelpClick) => [
-  {
-    label: 'Configuración',
-    icon: 'pi pi-cog',
-    command: () => console.log('Configuración')
-  },
+  // {
+  //   label: 'Configuración',
+  //   icon: 'pi pi-cog',
+  //   command: () => console.log('Configuración')
+  // },
   {
     label: 'Ayuda',
     icon: 'pi pi-question-circle',

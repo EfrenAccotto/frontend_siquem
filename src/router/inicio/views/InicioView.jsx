@@ -7,9 +7,10 @@ const Inicio = () => {
     <div className="inicio-container">
       <Card className="text-center shadow-2 border-round inicio-card">
         <h2 className="text-4xl font-bold text-primary mb-3">
-          Bienvenido a Cooperativa La Soberana
+          Cooperativa La Soberana
         </h2>
-        <p className="text-600 text-lg mb-4">
+        <h3 className='mb-3'>Software de Gestión</h3>
+        <p className="text-600 text-md mb-4">
           Gestiona tus productos, ventas, pedidos y clientes de forma eficiente
         </p>
 
@@ -17,8 +18,11 @@ const Inicio = () => {
           <img
             src={indexImg}
             alt="Cooperativa La Soberana"
-            className="border-round shadow-2 inicio-image"
+            className="border-round inicio-image"
           />
+        </div>
+        <div className="flex justify-content-center p-3">
+          © 2025 – PampaCode · Todos los derechos reservados.
         </div>
       </Card>
     </div>

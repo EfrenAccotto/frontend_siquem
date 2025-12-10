@@ -15,10 +15,59 @@ import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
 import { confirmDialog } from 'primereact/confirmdialog';
 
+// Mapeo de estados de pedidos de inglés a español
+const STATUS_MAP = {
+  'pending': 'Pendiente',
+  'confirmed': 'Confirmado',
+  'processing': 'En Proceso',
+  'preparing': 'Preparando',
+  'ready': 'Listo',
+  'shipped': 'Enviado',
+  'delivered': 'Entregado',
+  'completed': 'Completado',
+  'cancelled': 'Cancelado',
+  'on_hold': 'En Espera',
+  'returned': 'Devuelto',
+  'refunded': 'Reembolsado'
+};
+
+// Función para traducir estado al español
+const getStatusLabel = (status) => {
+  return STATUS_MAP[status] || status || 'Sin Estado';
+};
+
+// Función para obtener color del estado
+const getStatusSeverity = (status) => {
+  const severityMap = {
+    'pending': 'warning',
+    'confirmed': 'info',
+    'processing': 'info',
+    'preparing': 'info',
+    'ready': 'success',
+    'shipped': 'success',
+    'delivered': 'success',
+    'completed': 'success',
+    'cancelled': 'danger',
+    'on_hold': 'warning',
+    'returned': 'warning',
+    'refunded': 'secondary'
+  };
+  return severityMap[status] || 'secondary';
+};
+
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
+  { label: 'Confirmado', value: 'confirmed' },
+  { label: 'En Proceso', value: 'processing' },
+  { label: 'Preparando', value: 'preparing' },
+  { label: 'Listo', value: 'ready' },
+  { label: 'Enviado', value: 'shipped' },
+  { label: 'Entregado', value: 'delivered' },
   { label: 'Completado', value: 'completed' },
-  { label: 'Cancelado', value: 'cancelled' }
+  { label: 'Cancelado', value: 'cancelled' },
+  { label: 'En Espera', value: 'on_hold' },
+  { label: 'Devuelto', value: 'returned' },
+  { label: 'Reembolsado', value: 'refunded' }
 ];
 
 const buildPedidoParams = (filters) => {
@@ -548,12 +597,16 @@ const PedidoView = () => {
 
   const estadoTemplate = (rowData) => {
     const estadoClasses = {
-      pending: 'p-badge-warning',
-      completed: 'p-badge-success',
-      cancelled: 'p-badge-danger'
+      pending: 'p-badge-warning p-1 border-round-sm',
+      completed: 'p-badge-success p-1 border-round-sm',
+      cancelled: 'p-badge-danger p-1 border-round-sm',
     };
-    const className = estadoClasses[rowData.state] || 'p-badge-info';
-    return <span className={`p-badge ${className}`}>{rowData.state}</span>;
+    
+    const status = rowData.state || rowData.status;
+    const className = estadoClasses[status] || 'p-badge-secondary';
+    const label = getStatusLabel(status);
+    
+    return <span className={`p-badge ${className}`}>{label}</span>;
   };
 
   const columns = [

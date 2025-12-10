@@ -122,7 +122,15 @@ class ReporteService {
     }
   }
 
-  static async downloadOrdersByZonePdf({ dateFrom = null, dateTo = null, status = null } = {}, { responseType = 'blob' } = {}) {
+  /**
+   * Descargar PDF de pedidos agrupados por zona
+   * @param {Object} params - Parámetros de filtro
+   * @param {string} params.dateFrom - Fecha de inicio (YYYY-MM-DD)
+   * @param {string} params.dateTo - Fecha de fin (YYYY-MM-DD)  
+   * @param {string} params.status - Estado del pedido ('pending', 'completed', 'cancelled')
+   * @returns {Promise} PDF blob para descarga
+   */
+  static async downloadOrdersByZonePdf({ dateFrom = null, dateTo = null, status = null } = {}) {
     try {
       const params = {};
       if (dateFrom) params.date_from = dateFrom;
@@ -131,9 +139,13 @@ class ReporteService {
 
       const response = await axios.get(`${REPORTES_ENDPOINT}/orders-by-zone-pdf/`, {
         params,
-        responseType,
-        headers: { Accept: 'application/pdf' }
+        responseType: 'blob',
+        headers: { 
+          'Accept': '*/*',
+          'Content-Type': 'application/json'
+        }
       });
+      
       return {
         success: true,
         data: response.data,
@@ -141,9 +153,24 @@ class ReporteService {
         headers: response.headers
       };
     } catch (error) {
+      
+      // Manejo mejorado de errores
+      let errorMessage = 'Error al descargar hoja de ruta por zonas';
+      if (error.response?.data && error.response.data instanceof Blob) {
+        try {
+          const errorText = await error.response.data.text();
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch (parseError) {
+          console.warn('No se pudo parsear el error del blob:', parseError);
+        }
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+      
       return {
         success: false,
-        error: error.response?.data || 'Error al descargar hoja de ruta por zonas',
+        error: errorMessage,
         status: error.response?.status || 500
       };
     }

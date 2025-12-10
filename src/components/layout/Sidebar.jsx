@@ -73,8 +73,9 @@ const AppSidebar = () => {
         className="p-sidebar-md"
       >
         <div className="flex flex-column h-full">
-          <div className="mt-3 mb-5 flex justify-content-center">
-            <h2 className="text-xl font-bold">Granja Siquem</h2>
+          <div className="mt-3 mb-5 flex justify-content-center gap-3 align-items-center">
+            <img src="src/assets/img/index.png" alt="logo" width={50} height={50}/>
+            <h2 className="text-xl font-bold">La Soberana</h2>
           </div>
           <div className="flex flex-column gap-2">
             {menuItems.map((item) => (
