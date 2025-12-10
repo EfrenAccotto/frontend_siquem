@@ -295,25 +295,6 @@ const loadPedidos = async () => {
     }, 0);
   };
 
-  const handleItemChange = (itemId, changes = {}) => {
-    setFormData((prev) => {
-      const updatedItems = (prev.items || []).map((item) => {
-        if (item.id !== itemId) return item;
-        const next = { ...item, ...changes };
-        const qty = next.cantidad ?? next.quantity ?? 1;
-        const price = next.precioUnitario ?? next.product_price ?? next.producto?.price ?? next.product?.price ?? 0;
-        const subtotal = changes.subtotal ?? next.subtotal ?? price * qty;
-        return { ...next, cantidad: qty, subtotal };
-      });
-      return {
-        ...prev,
-        items: updatedItems,
-        detalles: updatedItems,
-        total: recalcTotal(updatedItems)
-      };
-    });
-  };
-
   const handleAddItem = () => {
     if (!selectedProducto || (cantidad || 0) <= 0) return;
 
@@ -423,26 +404,10 @@ const loadPedidos = async () => {
     onSave(payload, formData.items);
   };
 
-  const renderCantidadInput = (rowData) => (
-    <InputNumber
-      value={rowData.cantidad ?? rowData.quantity ?? 1}
-      onValueChange={(e) => handleItemChange(rowData.id, { cantidad: e.value })}
-      showButtons
-      min={1}
-      className="w-full"
-    />
-  );
-
-  const renderPrecioInput = (rowData) => (
-    <InputNumber
-      value={rowData.precioUnitario ?? rowData.product_price ?? rowData.producto?.price ?? rowData.product?.price ?? 0}
-      onValueChange={(e) => handleItemChange(rowData.id, { precioUnitario: e.value })}
-      mode="currency"
-      currency="ARS"
-      locale="es-AR"
-      className="w-full"
-    />
-  );
+  const precioTemplate = (rowData) => {
+    const price = rowData.precioUnitario ?? rowData.product_price ?? rowData.producto?.price ?? rowData.product?.price ?? 0;
+    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(price);
+  };
 
   const subtotalTemplate = (rowData) => {
     const qty = rowData.cantidad ?? rowData.quantity ?? 1;
@@ -575,8 +540,12 @@ const loadPedidos = async () => {
               header="Producto"
               body={(rowData) => rowData.producto?.name || rowData.product?.name || 'Sin nombre'}
             ></Column>
-            <Column header="Cant." body={renderCantidadInput} style={{ width: '12%' }}></Column>
-            <Column header="Precio Unit." body={renderPrecioInput}></Column>
+            <Column
+              header="Cant."
+              body={(rowData) => rowData.cantidad ?? rowData.quantity ?? 1}
+              style={{ width: '12%' }}
+            ></Column>
+            <Column header="Precio Unit." body={precioTemplate}></Column>
             <Column header="Subtotal" body={subtotalTemplate}></Column>
             <Column
               body={(rowData) => (
