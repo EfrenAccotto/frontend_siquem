@@ -12,6 +12,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
     last_name: '',
     phone_number: '',
     dni: '',
+    zona: '',
     province: null,
     locality: null,
     street: '',
@@ -24,6 +25,12 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const [provincias, setProvincias] = useState([]);
   const [localidades, setLocalidades] = useState([]);
   const [localidadSuggestions, setLocalidadSuggestions] = useState([]);
+  const zonas = [
+    { label: 'Centro', value: 'Centro' },
+    { label: 'Banda Norte', value: 'Banda Norte' },
+    { label: 'Alberdi', value: 'Alberdi' },
+    { label: 'Las Higueras', value: 'Las Higueras' }
+  ];
 
   const localityIdFromValue = (loc) => {
     if (!loc) return null;
@@ -108,6 +115,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
         last_name: cliente?.last_name || '',
         phone_number: cliente?.phone_number || '',
         dni: cliente?.dni || '',
+        zona: cliente?.zona || '',
         province: provinceId,
         locality: localityId,
         street: cliente?.address?.street || '',
@@ -199,6 +207,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
         last_name: formData.last_name.trim(),
         phone_number: formData.phone_number || '',
         dni: formData.dni.trim(),
+        zona: formData.zona || '',
         address: {
           street: formData.street.trim(),
           number: formData.number.trim(),
@@ -288,6 +297,19 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
                 value={formData.phone_number}
                 onChange={(e) => handleChange('phone_number', e.target.value)}
                 placeholder="Ej: +54 11 1234-5678"
+              />
+            </div>
+          </div>
+
+          <div className="col-12 md:col-6">
+            <div className="field">
+              <label className="font-bold">Zona</label>
+              <Dropdown
+                value={formData.zona}
+                options={zonas}
+                onChange={(e) => handleChange('zona', e.value)}
+                placeholder="Seleccione zona"
+                showClear
               />
             </div>
           </div>

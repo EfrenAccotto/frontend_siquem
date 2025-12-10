@@ -4,6 +4,8 @@ import { Calendar } from 'primereact/calendar';
 import { Button } from 'primereact/button';
 import { InputTextarea } from 'primereact/inputtextarea';
 import { InputNumber } from 'primereact/inputnumber';
+import { InputText } from 'primereact/inputtext';
+import { Checkbox } from 'primereact/checkbox';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { useEffect, useState } from 'react';
@@ -24,7 +26,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     observaciones: '',
     fechaPedido: new Date(),
     estado: 'pending',
-    items: []
+    items: [],
+    usarEnvioPersonalizado: false,
+    envioLocalidad: '',
+    envioDireccion: '',
+    envioZona: ''
   });
   const [productos, setProductos] = useState([]);
   const [selectedProducto, setSelectedProducto] = useState(null);
@@ -71,6 +77,27 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     });
   };
 
+  const formatDireccionCliente = (cliente) => {
+    const addr = cliente?.address;
+    if (!addr) return '';
+    const localidad = addr.locality?.name || addr.locality_name || '';
+    const provincia = addr.locality?.province?.name || '';
+    const calleNumero = `${addr.street || ''} ${addr.number || ''}`.trim();
+    const locProv = [localidad, provincia].filter(Boolean).join(', ');
+    return [calleNumero, locProv ? `(${locProv})` : ''].filter(Boolean).join(' ').trim();
+  };
+
+  const buildDireccionEntrega = (data, cliente) => {
+    const dir = (data.envioDireccion || '').trim();
+    const loc = (data.envioLocalidad || '').trim();
+    const zona = (data.envioZona || '').trim();
+    if (dir || loc || zona) {
+      const base = [dir, loc].filter(Boolean).join(' - ');
+      return `${base}${zona ? ` (Zona: ${zona})` : ''}`.trim();
+    }
+    return formatDireccionCliente(cliente);
+  };
+
   useEffect(() => {
     if (!visible) return;
 
@@ -85,7 +112,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           observaciones: pedido.observations || pedido.observaciones || '',
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
-          items: mapItemsFromPedido(pedido, productosList)
+          items: mapItemsFromPedido(pedido, productosList),
+          usarEnvioPersonalizado: false,
+          envioLocalidad: '',
+          envioDireccion: '',
+          envioZona: ''
         });
       } else {
         setFormData({
@@ -93,7 +124,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           observaciones: '',
           fechaPedido: new Date(),
           estado: 'pending',
-          items: []
+          items: [],
+          usarEnvioPersonalizado: false,
+          envioLocalidad: '',
+          envioDireccion: '',
+          envioZona: ''
         });
       }
       setSelectedProducto(null);
@@ -125,9 +160,13 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           product_id: item.producto?.id || item.producto || item.product_id,
           quantity: item.cantidad || item.quantity || 1
         })).filter((d) => d.product_id);
+        const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
+        const observacionesConEnvio = [formData.observaciones, direccionEntrega ? `Entrega: ${direccionEntrega}` : '']
+          .filter(Boolean)
+          .join('\n');
         const payload = {
             customer_id: formData.cliente.id || formData.cliente,
-            observations: formData.observaciones,
+            observations: observacionesConEnvio,
             date: formData.fechaPedido?.toISOString?.().slice(0, 10) || formData.fechaPedido,
             state: formData.estado || 'pending',
             shipping_address_id: formData.cliente.address?.id || null,
@@ -242,6 +281,55 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
             />
           </div>
         </div>
+
+        <div className="col-12">
+          <div className="field">
+            <div className="flex align-items-center gap-2">
+              <Checkbox
+                inputId="usarEnvioPersonalizado"
+                checked={formData.usarEnvioPersonalizado}
+                onChange={(e) => setFormData((prev) => ({ ...prev, usarEnvioPersonalizado: e.checked }))}
+              />
+              <label htmlFor="usarEnvioPersonalizado" className="font-bold cursor-pointer">
+                Usar datos de envío personalizados
+              </label>
+            </div>
+            <small className="text-500 block mt-1">
+              Si no ingresas datos, se usará la dirección del cliente: {formatDireccionCliente(formData.cliente) || 'Sin dirección asignada'}
+            </small>
+          </div>
+        </div>
+
+        {formData.usarEnvioPersonalizado && (
+          <div className="col-12">
+            <div className="formgrid grid">
+              <div className="field col-12 md:col-4">
+                <label className="font-bold">Localidad</label>
+                <InputText
+                  value={formData.envioLocalidad}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioLocalidad: e.target.value }))}
+                  placeholder="Ej: Bahía Blanca"
+                />
+              </div>
+              <div className="field col-12 md:col-4">
+                <label className="font-bold">Dirección</label>
+                <InputText
+                  value={formData.envioDireccion}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioDireccion: e.target.value }))}
+                  placeholder="Calle y número"
+                />
+              </div>
+              <div className="field col-12 md:col-4">
+                <label className="font-bold">Zona</label>
+                <InputText
+                  value={formData.envioZona}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioZona: e.target.value }))}
+                  placeholder="Ej: Zona sur"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="col-12">
           <div className="p-3 border-1 surface-border border-round surface-ground">

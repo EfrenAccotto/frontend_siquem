@@ -7,6 +7,8 @@ import ReporteService from '@/router/reportes/services/ReporteService';
 import PedidoForm from '../components/PedidoForm';
 import DetallePedidoDialog from '../components/DetallePedidoDialog';
 import { Dropdown } from 'primereact/dropdown';
+import { Calendar } from 'primereact/calendar';
+import { Dialog } from 'primereact/dialog';
 import useClienteStore from '@/store/useClienteStore';
 import { Button } from 'primereact/button';
 import VentaForm from '@/router/ventas/components/VentaForm';
@@ -40,6 +42,13 @@ const PedidoView = () => {
   const [pedidoDialogLoading, setPedidoDialogLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingVenta, setSavingVenta] = useState(false);
+  const [loadingRemito, setLoadingRemito] = useState(false);
+  const [loadingHojaRuta, setLoadingHojaRuta] = useState(false);
+  const [showHojaRutaDialog, setShowHojaRutaDialog] = useState(false);
+  const [fechaDesdeHoja, setFechaDesdeHoja] = useState(null);
+  const [fechaHastaHoja, setFechaHastaHoja] = useState(null);
+  const [estadoHojaRuta, setEstadoHojaRuta] = useState(null);
+  const [loadingVentaBtn, setLoadingVentaBtn] = useState(false);
   const [pedidoParaVenta, setPedidoParaVenta] = useState(null);
   const [filters, setFilters] = useState({ estado: null, clienteId: null, search: '' });
   const { clientes, fetchClientes } = useClienteStore();
@@ -62,9 +71,10 @@ const PedidoView = () => {
           const list = response.data?.results || response.data || [];
           const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
           const enhanced = sorted.map((p) => {
-            if (p.shipping_address_str) return p;
             const addr = p.shipping_address || p.customer?.address;
-            return { ...p, shipping_address_str: formatAddress(addr) };
+            const obsShipping = extractShippingFromObservations(p.observations || p.observaciones);
+            const shippingStr = p.shipping_address_str || formatAddress(addr) || obsShipping;
+            return { ...p, shipping_address_str: shippingStr, shipping_obs: obsShipping };
           });
           setPedidos(enhanced);
           setSelectedPedido(null);
@@ -129,6 +139,14 @@ const PedidoView = () => {
     return [main, extra].filter(Boolean).join(' ').trim() || null;
   };
 
+  const extractShippingFromObservations = (obs) => {
+    if (!obs) return null;
+    const lines = String(obs).split('\n');
+    const entregaLine = lines.find((line) => line.toLowerCase().startsWith('entrega:'));
+    if (!entregaLine) return null;
+    return entregaLine.replace(/entrega:\s*/i, '').trim() || null;
+  };
+
   const mapPedidoDetalle = (pedidoData = {}) => {
     const detalles =
       (Array.isArray(pedidoData.detail) && pedidoData.detail) ||
@@ -155,9 +173,11 @@ const PedidoView = () => {
     });
 
     const addr = pedidoData.shipping_address || pedidoData.customer?.address;
+    const obsShipping = extractShippingFromObservations(pedidoData.observations || pedidoData.observaciones);
     return {
       ...pedidoData,
-      shipping_address_str: pedidoData.shipping_address_str || formatAddress(addr),
+      shipping_address_str: pedidoData.shipping_address_str || formatAddress(addr) || obsShipping,
+      shipping_obs: obsShipping,
       detail: mapped,
       detalle: mapped,
       detalles: mapped,
@@ -201,24 +221,32 @@ const PedidoView = () => {
       });
   };
 
-  const handleGenerarVenta = () => {
+  const handleGenerarVenta = async () => {
     if (!selectedPedido) return;
-    // fallback inicial en caso de que la carga detallada falle
-    setPedidoParaVenta(mapPedidoDetalle(selectedPedido));
+    setLoadingVentaBtn(true);
+    try {
+      // fallback inicial en caso de que la carga detallada falle
+      setPedidoParaVenta(mapPedidoDetalle(selectedPedido));
 
-    PedidoService.getById(selectedPedido.id)
-      .then((resp) => {
+      try {
+        const resp = await PedidoService.getById(selectedPedido.id);
         if (resp.success) {
           const pedidoCompleto = mapPedidoDetalle(resp.data);
           setSelectedPedido(pedidoCompleto);
           setPedidoParaVenta(pedidoCompleto);
         }
-      })
-      .finally(() => setShowVentaDialog(true));
+      } catch (_) {
+        // continuar con fallback
+      }
+      setShowVentaDialog(true);
+    } finally {
+      setLoadingVentaBtn(false);
+    }
   };
 
   const handleGenerarRemito = async () => {
     if (!selectedPedido) return;
+    setLoadingRemito(true);
     try {
       const response = await ReporteService.downloadByOrderId(selectedPedido.id);
       if (response.success) {
@@ -236,6 +264,57 @@ const PedidoView = () => {
       }
     } catch (error) {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: `No se pudo generar el remito: ${error.message}`, life: 4000 });
+    } finally {
+      setLoadingRemito(false);
+    }
+  };
+
+  const formatDateISO = (dateValue) => {
+    if (!dateValue) return null;
+    if (typeof dateValue === 'string') return dateValue;
+    try {
+      return dateValue.toISOString().slice(0, 10);
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const handleOpenHojaRuta = () => {
+    setShowHojaRutaDialog(true);
+  };
+
+  const handleGenerarHojaRuta = async () => {
+    const dateFrom = formatDateISO(fechaDesdeHoja);
+    const dateTo = formatDateISO(fechaHastaHoja);
+    const status = estadoHojaRuta || null;
+    setLoadingHojaRuta(true);
+    try {
+      const response = await ReporteService.downloadOrdersByZonePdf({ dateFrom, dateTo, status });
+      if (response.success) {
+        const contentType = response.headers?.['content-type'] || 'application/pdf';
+        const data = response.data;
+        const blob =
+          data instanceof Blob
+            ? data
+            : new Blob([data], { type: contentType });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const nameFrom = dateFrom || 'todos';
+        const nameTo = dateTo || 'todos';
+        link.setAttribute('download', `hoja_ruta_zonas_${nameFrom}_${nameTo}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        setShowHojaRutaDialog(false);
+      } else {
+        throw new Error(response.error || 'No se pudo generar la hoja de ruta');
+      }
+    } catch (error) {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message || 'No se pudo generar la hoja de ruta', life: 4000 });
+    } finally {
+      setLoadingHojaRuta(false);
     }
   };
 
@@ -248,7 +327,8 @@ const PedidoView = () => {
           const updatedPedidos = [...pedidos.map((p) => {
             if (p.id !== pedidoEditando.id) return p;
             const addr = updated.shipping_address || updated.customer?.address;
-            return { ...p, ...updated, shipping_address_str: formatAddress(addr) };
+            const obsShipping = extractShippingFromObservations(updated.observations || updated.observaciones);
+            return { ...p, ...updated, shipping_address_str: formatAddress(addr) || obsShipping, shipping_obs: obsShipping };
           })].sort(
             (a, b) => (b.id || 0) - (a.id || 0)
           );
@@ -262,11 +342,13 @@ const PedidoView = () => {
         console.log('Respuesta de creación de pedido:', response);
         if (response.success) {
           setPedidos((prev) => {
+            const obsShipping = extractShippingFromObservations(response.data?.observations || response.data?.observaciones);
             const enriched = {
               ...response.data,
               shipping_address_str: formatAddress(
                 response.data.shipping_address || response.data.customer?.address
-              )
+              ) || obsShipping,
+              shipping_obs: obsShipping
             };
             const next = [enriched, ...(prev || [])];
             return next.sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -275,7 +357,12 @@ const PedidoView = () => {
             .then((refetch) => {
               const list = refetch?.data?.results || refetch?.data || [];
               if (Array.isArray(list) && list.length > 0) {
-                setPedidos([...list].sort((a, b) => (b.id || 0) - (a.id || 0)));
+                const enhanced = list.map((p) => {
+                  const addr = p.shipping_address || p.customer?.address;
+                  const obsShipping = extractShippingFromObservations(p.observations || p.observaciones);
+                  return { ...p, shipping_address_str: formatAddress(addr) || obsShipping, shipping_obs: obsShipping };
+                });
+                setPedidos(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
               }
             })
             .catch(() => {
@@ -396,7 +483,7 @@ const PedidoView = () => {
             if (Array.isArray(list) && list.length > 0) {
               const enhanced = list.map((p) => ({
                 ...p,
-                shipping_address_str: formatAddress(p.shipping_address || p.customer?.address)
+                shipping_address_str: formatAddress(p.shipping_address || p.customer?.address) || extractShippingFromObservations(p.observations || p.observaciones)
               }));
               setPedidos(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
             }
@@ -444,6 +531,8 @@ const PedidoView = () => {
 
   const direccionTemplate = (rowData) => {
     if (rowData.shipping_address_str) return rowData.shipping_address_str;
+    const obsShipping = rowData.shipping_obs || extractShippingFromObservations(rowData.observations || rowData.observaciones);
+    if (obsShipping) return obsShipping;
     const addr = rowData.shipping_address || rowData.customer?.address;
     if (!addr) return '-';
     const locality = addr.locality_name || addr.locality?.name || '';
@@ -510,6 +599,15 @@ const PedidoView = () => {
             showDelete={true}
             showDetail={true}
             showExport={false}
+            extraButtons={[
+              {
+                label: 'Hoja de ruta',
+                icon: 'pi pi-send',
+                onClick: handleOpenHojaRuta,
+                disabled: loadingHojaRuta,
+                loading: loadingHojaRuta
+              }
+            ]}
             editDisabled={!selectedPedido}
             deleteDisabled={!selectedPedido}
             detailDisabled={!selectedPedido}
@@ -548,14 +646,16 @@ const PedidoView = () => {
                   icon="pi pi-file"
                   className="p-button-help p-button-raised mr-2"
                   onClick={handleGenerarRemito}
-                  disabled={!selectedPedido}
+                  disabled={!selectedPedido || loadingRemito}
+                  loading={loadingRemito}
                 />
                 <Button
                   label="Generar Venta"
                   icon="pi pi-shopping-cart"
                   className="p-button-secondary p-button-raised"
                   onClick={handleGenerarVenta}
-                  disabled={!selectedPedido}
+                  disabled={!selectedPedido || loadingVentaBtn}
+                  loading={loadingVentaBtn}
                 />
               </>
             }
@@ -597,6 +697,67 @@ const PedidoView = () => {
         loading={savingVenta}
         pedido={pedidoParaVenta || selectedPedido}
       />
+
+      <Dialog
+        visible={showHojaRutaDialog}
+        onHide={() => setShowHojaRutaDialog(false)}
+        header="Generar hoja de ruta por zonas"
+        style={{ width: '400px' }}
+        footer={
+          <div className="flex justify-content-end gap-2">
+            <Button label="Cancelar" className="p-button-text" onClick={() => setShowHojaRutaDialog(false)} disabled={loadingHojaRuta} />
+            <Button label="Generar" icon="pi pi-send" onClick={handleGenerarHojaRuta} loading={loadingHojaRuta} />
+          </div>
+        }
+      >
+        <div className="grid">
+          <div className="col-12">
+            <label className="font-bold">Rango de fechas (opcional)</label>
+          </div>
+          <div className="col-12 md:col-6">
+            <div className="field">
+              <label className="text-500">Desde</label>
+              <Calendar
+                value={fechaDesdeHoja}
+                onChange={(e) => setFechaDesdeHoja(e.value)}
+                dateFormat="dd/mm/yy"
+                showIcon
+                className="w-full"
+              />
+            </div>
+          </div>
+          <div className="col-12 md:col-6">
+            <div className="field">
+              <label className="text-500">Hasta</label>
+              <Calendar
+                value={fechaHastaHoja}
+                onChange={(e) => setFechaHastaHoja(e.value)}
+                dateFormat="dd/mm/yy"
+                showIcon
+                className="w-full"
+              />
+            </div>
+          </div>
+          <div className="col-12">
+            <div className="field">
+              <label className="font-bold">Estado (opcional)</label>
+              <Dropdown
+                value={estadoHojaRuta}
+                options={estadoOptions}
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Todos"
+                onChange={(e) => setEstadoHojaRuta(e.value)}
+                showClear
+                className="w-full"
+              />
+            </div>
+          </div>
+          <div className="col-12">
+            <small className="text-500 block mt-1">Si no eliges filtros, se generarán todos los pedidos agrupados por zona.</small>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 };

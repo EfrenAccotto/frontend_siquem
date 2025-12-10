@@ -20,6 +20,7 @@ const ActionButtons = ({
   searchPlaceholder = 'Buscar...',
   filtersContent = null,
   extraActions = null,
+  extraButtons = [],
 }) => (
   <div className="flex gap-2 align-items-center w-full flex-wrap">
     <div className="flex-1" style={{ minWidth: '220px' }}>
@@ -42,6 +43,19 @@ const ActionButtons = ({
 
     <div className="flex gap-2 flex-wrap justify-content-end">
       {extraActions}
+      {Array.isArray(extraButtons) &&
+        extraButtons.map((btn, idx) => (
+          <Button
+            key={`extra-btn-${idx}-${btn.label || 'btn'}`}
+            label={btn.label}
+            icon={btn.icon}
+            className={btn.className || 'p-button-secondary p-button-raised'}
+            onClick={btn.onClick}
+            disabled={btn.disabled || btn.loading}
+            loading={btn.loading}
+            style={btn.disabled || btn.loading ? { opacity: 0.5 } : undefined}
+          />
+        ))}
       {showCreate && (
         <Button label="Crear" className="p-button-success p-button-raised" onClick={onCreate} />
       )}

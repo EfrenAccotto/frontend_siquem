@@ -121,5 +121,32 @@ class ReporteService {
       };
     }
   }
+
+  static async downloadOrdersByZonePdf({ dateFrom = null, dateTo = null, status = null } = {}, { responseType = 'blob' } = {}) {
+    try {
+      const params = {};
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      if (status) params.status = status;
+
+      const response = await axios.get(`${REPORTES_ENDPOINT}/orders-by-zone-pdf/`, {
+        params,
+        responseType,
+        headers: { Accept: 'application/pdf' }
+      });
+      return {
+        success: true,
+        data: response.data,
+        status: response.status,
+        headers: response.headers
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || 'Error al descargar hoja de ruta por zonas',
+        status: error.response?.status || 500
+      };
+    }
+  }
 }
 export default ReporteService;
