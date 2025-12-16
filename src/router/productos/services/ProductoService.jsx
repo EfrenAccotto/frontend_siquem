@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '');
+const BASE_URL = import.meta.env.API_BASE_URL;
 const PRODUCTOS_ENDPOINT = `${BASE_URL}/product`;
 
 class ProductoService {
