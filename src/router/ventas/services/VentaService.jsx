@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const VENTAS_ENDPOINT = `${BASE_URL}/sale`;
 const VENTA_DETAILS_ENDPOINT = `${BASE_URL}/sale-detail`;
 

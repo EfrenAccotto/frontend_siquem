@@ -1,5 +1,4 @@
 import { Routes, Route } from 'react-router-dom'
-import VentaTable from './components/VentasTable'
 import VentaView from './views/VentaView'
 
 const VentaRouter = () => {

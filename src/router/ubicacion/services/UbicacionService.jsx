@@ -1,12 +1,13 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 class UbicacionService {
   static async getProvincias() {
     try {
       const response = await axios.get(`${BASE_URL}/provinces/`);
       const data = response.data?.results || response.data || [];
+      console.log('Provincias fetched:', data);
       return { success: true, data, status: response.status };
     } catch (error) {
       return { success: true, data: [], status: error.response?.status || 500 };

@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Asegura que no haya doble slash si la env var trae la barra final
-const BASE_URL = import.meta.env.API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const REPORTES_ENDPOINT = `${BASE_URL}/reports`;
 // Cambiado: usar el endpoint remito (remito/<order_id>/)
 const REMITO_ENDPOINT = `${BASE_URL}/remito`;

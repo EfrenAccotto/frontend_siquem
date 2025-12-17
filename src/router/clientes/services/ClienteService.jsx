@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Asegura que no haya doble slash si la env var trae la barra final
-const BASE_URL = import.meta.env.API_BASE_URL;
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CLIENTES_ENDPOINT = `${BASE_URL}/customer`;
 
 class ClienteService {
