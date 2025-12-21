@@ -81,10 +81,23 @@ const ClienteView = () => {
   };
 
   const handleEditar = () => {
-    if (selectedCliente) {
-      setClienteEditando(selectedCliente);
-      setShowDialog(true);
-    }
+    if (!selectedCliente) return;
+    setLoading(true);
+    ClienteService.getById(selectedCliente.id)
+      .then((response) => {
+        if (response.success && response.data) {
+          setClienteEditando(response.data);
+          setShowDialog(true);
+        } else {
+          const detail = typeof response.error === 'string' ? response.error : 'No se pudo obtener el cliente';
+          toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 3000 });
+        }
+      })
+      .catch((error) => {
+        const detail = error?.message || 'No se pudo obtener el cliente';
+        toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 3000 });
+      })
+      .finally(() => setLoading(false));
   };
 
   const handleGuardar = async (formData) => {

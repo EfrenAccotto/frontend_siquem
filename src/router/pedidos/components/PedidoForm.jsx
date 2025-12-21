@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 
+// Estados permitidos por el backend: solo pending | completed | cancelled
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
   { label: 'Completado', value: 'completed' },
@@ -19,7 +20,7 @@ const estadoOptions = [
 ];
 
 const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
-    const { clientes, fetchClientes } = useClienteStore();
+const { clientes, fetchClientes } = useClienteStore();
 
   const [formData, setFormData] = useState({
     cliente: null,
@@ -152,28 +153,44 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     return productos;
   };
 
-    const clienteLabel = (c) => `${c?.first_name || ''} ${c?.last_name || ''}`.trim() || c?.nombreCompleto || c?.name || 'Sin nombre';
+  const clienteLabel = (c) => `${c?.first_name || ''} ${c?.last_name || ''}`.trim() || c?.nombreCompleto || c?.name || 'Sin nombre';
 
-    const handleSubmit = () => {
-        if (!formData.cliente) return;
-        const detailItems = (formData.items || []).map((item) => ({
-          product_id: item.producto?.id || item.producto || item.product_id,
-          quantity: item.cantidad || item.quantity || 1
-        })).filter((d) => d.product_id);
-        const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
-        const observacionesConEnvio = [formData.observaciones, direccionEntrega ? `Entrega: ${direccionEntrega}` : '']
-          .filter(Boolean)
-          .join('\n');
-        const payload = {
-            customer_id: formData.cliente.id || formData.cliente,
-            observations: observacionesConEnvio,
-            date: formData.fechaPedido?.toISOString?.().slice(0, 10) || formData.fechaPedido,
-            state: formData.estado || 'pending',
-            shipping_address_id: formData.cliente.address?.id || null,
-            detail: detailItems
-        };
-        onSave(payload);
+  const handleSubmit = () => {
+    if (!formData.cliente) return;
+
+    // No permitir crear pedidos en estado cancelado
+    if (!pedido && formData.estado === 'cancelled') {
+      return;
+    }
+
+    const detailItems = (formData.items || []).map((item) => ({
+      product_id: item.producto?.id || item.producto || item.product_id,
+      quantity: item.cantidad || item.quantity || 1
+    })).filter((d) => d.product_id);
+
+    const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
+    const observacionesConEnvio = [formData.observaciones, formData.usarEnvioPersonalizado ? `Entrega: ${direccionEntrega}` : '']
+      .filter(Boolean)
+      .join('\n');
+
+    const shippingAddressId =
+      formData.usarEnvioPersonalizado
+        ? null // no sobrescribir con la dirección del cliente si se ingresó una personalizada
+        : (formData.cliente.address?.id || null);
+
+    const payload = {
+      customer_id: formData.cliente.id || formData.cliente,
+      observations: observacionesConEnvio,
+      date: formData.fechaPedido?.toISOString?.().slice(0, 10) || formData.fechaPedido,
+      state: formData.estado || 'pending',
+      shipping_address_id: shippingAddressId,
+      detail: detailItems
     };
+
+    onSave(payload, {
+      shipping_address_override: formData.usarEnvioPersonalizado ? direccionEntrega : null
+    });
+  };
 
   const handleAddItem = () => {
     if (!selectedProducto || (cantidad || 0) <= 0) return;

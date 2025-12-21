@@ -3,6 +3,7 @@ import { Sidebar } from 'primereact/sidebar';
 import { Menubar } from 'primereact/menubar';
 import { Button } from 'primereact/button';
 import { useNavigate } from 'react-router-dom';
+import logo from '@/assets/img/index.png';
 import 'primereact/resources/themes/lara-light-indigo/theme.css';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
@@ -73,9 +74,9 @@ const AppSidebar = () => {
         className="p-sidebar-md"
       >
         <div className="flex flex-column h-full">
-          <div className="mt-3 mb-5 flex justify-content-center gap-3 align-items-center">
-            <img src="src/assets/img/index.png" alt="logo" width={50} height={50}/>
-            <h2 className="text-xl font-bold">La Soberana</h2>
+          <div className="mt-3 mb-5 flex justify-content-center gap-2 align-items-center">
+            <img src={logo} alt="La Soberana" className="border-circle shadow-1" style={{ width: '48px', height: '48px', objectFit: 'cover' }} />
+            <h2 className="text-xl font-bold m-0">La Soberana</h2>
           </div>
           <div className="flex flex-column gap-2">
             {menuItems.map((item) => (

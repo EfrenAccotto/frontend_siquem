@@ -15,59 +15,32 @@ import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
 import { confirmDialog } from 'primereact/confirmdialog';
 
-// Mapeo de estados de pedidos de inglés a español
+// Estados soportados por backend
 const STATUS_MAP = {
   'pending': 'Pendiente',
-  'confirmed': 'Confirmado',
-  'processing': 'En Proceso',
-  'preparing': 'Preparando',
-  'ready': 'Listo',
-  'shipped': 'Enviado',
-  'delivered': 'Entregado',
   'completed': 'Completado',
-  'cancelled': 'Cancelado',
-  'on_hold': 'En Espera',
-  'returned': 'Devuelto',
-  'refunded': 'Reembolsado'
+  'cancelled': 'Cancelado'
 };
 
-// Función para traducir estado al español
+// Funci?n para traducir estado al espa?ol
 const getStatusLabel = (status) => {
   return STATUS_MAP[status] || status || 'Sin Estado';
 };
 
-// Función para obtener color del estado
+// Funci?n para obtener color del estado
 const getStatusSeverity = (status) => {
   const severityMap = {
     'pending': 'warning',
-    'confirmed': 'info',
-    'processing': 'info',
-    'preparing': 'info',
-    'ready': 'success',
-    'shipped': 'success',
-    'delivered': 'success',
     'completed': 'success',
-    'cancelled': 'danger',
-    'on_hold': 'warning',
-    'returned': 'warning',
-    'refunded': 'secondary'
+    'cancelled': 'danger'
   };
   return severityMap[status] || 'secondary';
 };
 
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
-  { label: 'Confirmado', value: 'confirmed' },
-  { label: 'En Proceso', value: 'processing' },
-  { label: 'Preparando', value: 'preparing' },
-  { label: 'Listo', value: 'ready' },
-  { label: 'Enviado', value: 'shipped' },
-  { label: 'Entregado', value: 'delivered' },
   { label: 'Completado', value: 'completed' },
-  { label: 'Cancelado', value: 'cancelled' },
-  { label: 'En Espera', value: 'on_hold' },
-  { label: 'Devuelto', value: 'returned' },
-  { label: 'Reembolsado', value: 'refunded' }
+  { label: 'Cancelado', value: 'cancelled' }
 ];
 
 const buildPedidoParams = (filters) => {
@@ -271,7 +244,7 @@ const PedidoView = () => {
   };
 
   const handleGenerarVenta = async () => {
-    if (!selectedPedido) return;
+    if (!selectedPedido || selectedPedido.state === 'cancelled') return;
     setLoadingVentaBtn(true);
     try {
       // fallback inicial en caso de que la carga detallada falle
@@ -367,8 +340,12 @@ const PedidoView = () => {
     }
   };
 
-  const handleGuardar = async (formData) => {
+  const handleGuardar = async (formData, meta = {}) => {
     try {
+      if (!pedidoEditando && formData.state === 'cancelled') {
+        throw new Error('No se puede crear un pedido ya cancelado.');
+      }
+
       if (pedidoEditando) {
         const response = await PedidoService.update(pedidoEditando.id, formData);
         if (response.success) {
@@ -382,6 +359,7 @@ const PedidoView = () => {
             (a, b) => (b.id || 0) - (a.id || 0)
           );
           setPedidos(updatedPedidos);
+          setSelectedPedido(updated);
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido actualizado', life: 3000 });
         } else {
           throw new Error(response.error);
@@ -392,9 +370,10 @@ const PedidoView = () => {
         if (response.success) {
           setPedidos((prev) => {
             const obsShipping = extractShippingFromObservations(response.data?.observations || response.data?.observaciones);
+            const shippingOverride = meta?.shipping_address_override || null;
             const enriched = {
               ...response.data,
-              shipping_address_str: formatAddress(
+              shipping_address_str: shippingOverride || formatAddress(
                 response.data.shipping_address || response.data.customer?.address
               ) || obsShipping,
               shipping_obs: obsShipping
@@ -707,7 +686,7 @@ const PedidoView = () => {
                   icon="pi pi-shopping-cart"
                   className="p-button-secondary p-button-raised"
                   onClick={handleGenerarVenta}
-                  disabled={!selectedPedido || loadingVentaBtn}
+                  disabled={!selectedPedido || loadingVentaBtn || selectedPedido?.state === 'cancelled'}
                   loading={loadingVentaBtn}
                 />
               </>
