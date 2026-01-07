@@ -20,7 +20,6 @@ const ReporteView = () => {
     const tiposReporte = [
         { label: 'Ventas', value: 'ventas' },
         { label: 'Productos', value: 'productos' },
-        { label: 'Pedidos', value: 'pedidos' },
         { label: 'Clientes', value: 'clientes' }
     ];
 
