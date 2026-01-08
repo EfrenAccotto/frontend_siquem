@@ -29,7 +29,8 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
     { label: 'Centro', value: 'Centro' },
     { label: 'Banda Norte', value: 'Banda Norte' },
     { label: 'Alberdi', value: 'Alberdi' },
-    { label: 'Las Higueras', value: 'Las Higueras' }
+    { label: 'Las Higueras', value: 'Las Higueras' },
+    { label: 'Holmberg', value: 'Holmberg' }
   ];
 
   const localityIdFromValue = (loc) => {
