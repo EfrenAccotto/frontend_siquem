@@ -4,7 +4,7 @@ import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import { AutoComplete } from 'primereact/autocomplete';
 import { useEffect, useState } from 'react';
-import UbicacionService from '@/router/ubicacion/services/UbicacionService';
+import UbicacionService from '../../ubicacion/services/UbicacionService';
 
 const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const [formData, setFormData] = useState({
@@ -53,10 +53,18 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
     }));
 
   const loadProvincias = async () => {
-    const response = await UbicacionService.getProvincias();
-    if (response.success) {
-      const list = response.data || [];
-      setProvincias(mapProvincias(list));
+    try {
+      const response = await UbicacionService.getProvincias();
+      if (response.success) {
+        const list = response.data || [];
+        setProvincias(mapProvincias(list));
+      } else {
+        console.error('Error loading provincias:', response.error);
+        setProvincias([]);
+      }
+    } catch (error) {
+      console.error('Error loading provincias:', error);
+      setProvincias([]);
     }
   };
 
@@ -74,12 +82,18 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
     setLocalidadSuggestions([]);
 
     if (provinciaSeleccionada) {
-      const response = await UbicacionService.getLocalidades(provinciaSeleccionada);
-      if (response.success) {
-        const list = response.data || [];
-        const mapped = mapLocalidades(list);
-        setLocalidades(mapped);
-        setLocalidadSuggestions(mapped);
+      try {
+        const response = await UbicacionService.getLocalidades(provinciaSeleccionada);
+        if (response.success) {
+          const list = response.data || [];
+          const mapped = mapLocalidades(list);
+          setLocalidades(mapped);
+          setLocalidadSuggestions(mapped);
+        } else {
+          console.error('Error loading localidades:', response.error);
+        }
+      } catch (error) {
+        console.error('Error loading localidades:', error);
       }
     }
   };
@@ -217,6 +231,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
           locality_id: localityId || null
         }
       };
+      console.log('Submitting form data:', dataToSave);
       onSave(dataToSave);
     }
   };
