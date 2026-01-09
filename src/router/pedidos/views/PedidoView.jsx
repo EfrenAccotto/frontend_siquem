@@ -245,6 +245,18 @@ const PedidoView = () => {
 
   const handleGenerarVenta = async () => {
     if (!selectedPedido || selectedPedido.state === 'cancelled') return;
+    
+    // Verificar si el pedido ya está completado
+    if (selectedPedido.state === 'completed') {
+      toast.current?.show({
+        severity: 'warn',
+        summary: 'Advertencia',
+        detail: 'Este pedido ya está completado. No se puede generar otra venta.',
+        life: 4000
+      });
+      return;
+    }
+
     setLoadingVentaBtn(true);
     try {
       // fallback inicial en caso de que la carga detallada falle
@@ -254,6 +266,18 @@ const PedidoView = () => {
         const resp = await PedidoService.getById(selectedPedido.id);
         if (resp.success) {
           const pedidoCompleto = mapPedidoDetalle(resp.data);
+          
+          // Verificar nuevamente con datos actualizados
+          if (pedidoCompleto.state === 'completed') {
+            toast.current?.show({
+              severity: 'warn',
+              summary: 'Advertencia',
+              detail: 'Este pedido ya está completado. No se puede generar otra venta.',
+              life: 4000
+            });
+            return;
+          }
+          
           setSelectedPedido(pedidoCompleto);
           setPedidoParaVenta(pedidoCompleto);
         }
@@ -414,68 +438,85 @@ const PedidoView = () => {
     try {
       setSavingVenta(true);
 
-      const total = (items || []).reduce((acc, item) => acc + (Number(item.subtotal) || 0), 0);
-      const payload = { ...ventaData, total_price: Number(total.toFixed(2)) };
+      console.log('🔄 Completando pedido con productos del formulario de venta...');
+      console.log('📋 Items del formulario:', items);
+      
+      // Transformar los items del formulario de venta al formato que espera el serializer
+      // Estos items pueden haber sido modificados por el usuario en el modal de venta
+      // IMPORTANTE: Solo enviar product_id y quantity - NO enviar subtotal, price, etc.
+      const detallesParaEnviar = (items || []).map(item => {
+        const productId = item.producto?.id || item.product_id || item.product?.id;
+        const quantity = item.cantidad || item.quantity || 1;
+        
+        return {
+          product_id: productId,
+          quantity: Number(quantity) // Asegurar que sea número
+        };
+      }).filter(detalle => detalle.product_id && detalle.quantity > 0); // Filtrar items válidos
 
-      const response = await VentaService.create(payload);
-      if (!response.success) {
-        const err = typeof response.error === 'string' ? response.error : JSON.stringify(response.error);
-        throw new Error(err || 'No se pudo crear la venta');
+      console.log('📤 Detalles limpiados para OrderSerializer:', detallesParaEnviar);
+
+      // Validar que tengamos al menos un producto
+      if (detallesParaEnviar.length === 0) {
+        throw new Error('Debe agregar al menos un producto para completar el pedido');
       }
 
-      const saleId = response.data?.id;
+      // Payload con los productos del formulario (pueden ser diferentes a los originales)
+      const updatePayload = {
+        state: 'completed',
+        detail: detallesParaEnviar // Productos del formulario de venta
+      };
 
-      if (saleId && Array.isArray(items) && items.length) {
-        let existingProductIds = new Set();
-        try {
-          const existing = await VentaService.getDetailsBySaleId(saleId);
-          const list = existing?.data || [];
-          existingProductIds = new Set(list.map((d) => d.product_id || d.product?.id).filter(Boolean));
-        } catch (_) {
-          // seguimos con set vacío
-        }
-
-        const normalized = (items || [])
-          .map((item) => {
-            const qty = item.cantidad || item.quantity || 1;
-            const price =
-              item.precioUnitario ??
-              item.product_price ??
-              item.producto?.price ??
-              item.product?.price ??
-              0;
-            const productId = item.producto?.id || item.product_id || item.product?.id;
-            return {
-              sale_id: saleId,
-              product_id: productId,
-              quantity: qty,
-              price,
-              subtotal: item.subtotal ?? Number((price * qty).toFixed(2))
-            };
-          })
-          .filter((d) => d.product_id && !existingProductIds.has(d.product_id));
-
-        for (const detailPayload of normalized) {
-          const detailResp = await VentaService.createDetail(detailPayload);
-          if (!detailResp.success) {
-            const errDet =
-              typeof detailResp.error === 'string' ? detailResp.error : JSON.stringify(detailResp.error);
-            throw new Error(errDet || 'No se pudo crear un detalle de venta');
-          }
-        }
+      // Campos adicionales necesarios
+      if (selectedPedido.customer_id || selectedPedido.customer?.id) {
+        updatePayload.customer_id = selectedPedido.customer_id || selectedPedido.customer?.id;
       }
+
+      if (selectedPedido.date) {
+        updatePayload.date = selectedPedido.date;
+      }
+
+      if (selectedPedido.observations !== undefined) {
+        updatePayload.observations = selectedPedido.observations || '';
+      }
+
+      if (selectedPedido.shipping_address_id !== undefined) {
+        updatePayload.shipping_address_id = selectedPedido.shipping_address_id;
+      }
+
+      console.log('📤 Payload completo con productos modificados:', updatePayload);
+      
+      const updateResponse = await PedidoService.update(selectedPedido.id, updatePayload);
+
+      if (!updateResponse.success) {
+        const err = typeof updateResponse.error === 'string' ? updateResponse.error : JSON.stringify(updateResponse.error);
+        throw new Error(err || 'No se pudo completar el pedido');
+      }
+
+      // Actualizar estado local
+      const updatedPedido = { ...selectedPedido, state: 'completed' };
+      setSelectedPedido(updatedPedido);
+      
+      setPedidos(prev => prev.map(p => 
+        p.id === selectedPedido.id 
+          ? { ...p, state: 'completed' }
+          : p
+      ));
 
       toast.current?.show({
         severity: 'success',
         summary: 'Éxito',
-        detail: 'Venta generada desde pedido',
-        life: 3000
+        detail: 'Pedido completado con productos actualizados - venta generada automáticamente',
+        life: 4000
       });
+
+      console.log('✅ Pedido completado exitosamente con productos del formulario');
       setShowVentaDialog(false);
+
     } catch (error) {
-      const detail =
-        error?.message || 'No se pudo crear la venta. Revisa los datos e inténtalo nuevamente.';
-      console.error('Error generando venta desde pedido:', error);
+      const detail = error?.message || 'No se pudo completar el pedido. Revisa los datos e inténtalo nuevamente.';
+      console.error('❌ Error completando pedido:', error);
+      console.error('❌ Detalles del error:', error.response?.data || error.message);
       toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 4000 });
     } finally {
       setSavingVenta(false);
@@ -682,11 +723,11 @@ const PedidoView = () => {
                   loading={loadingRemito}
                 />
                 <Button
-                  label="Generar Venta"
+                  label={selectedPedido?.state === 'completed' ? 'Ya Completado' : 'Generar Venta'}
                   icon="pi pi-shopping-cart"
-                  className="p-button-secondary p-button-raised"
+                  className={`p-button-raised ${selectedPedido?.state === 'completed' ? 'p-button-success' : 'p-button-secondary'}`}
                   onClick={handleGenerarVenta}
-                  disabled={!selectedPedido || loadingVentaBtn || selectedPedido?.state === 'cancelled'}
+                  disabled={!selectedPedido || loadingVentaBtn || selectedPedido?.state === 'cancelled' || selectedPedido?.state === 'completed'}
                   loading={loadingVentaBtn}
                 />
               </>

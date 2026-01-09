@@ -106,14 +106,16 @@ const { clientes, fetchClientes } = useClienteStore();
       await fetchClientes();
       const clientesList = useClienteStore.getState()?.clientes || clientes;
       const productosList = (await loadProductos()) || productos;
+      
       const clienteDelPedido = resolveClienteValue(pedido?.customer || pedido?.cliente, clientesList);
       if (pedido) {
+        const items = mapItemsFromPedido(pedido, productosList);
         setFormData({
           cliente: clienteDelPedido,
           observaciones: pedido.observations || pedido.observaciones || '',
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
-          items: mapItemsFromPedido(pedido, productosList),
+          items: items,
           usarEnvioPersonalizado: false,
           envioLocalidad: '',
           envioDireccion: '',
@@ -163,10 +165,22 @@ const { clientes, fetchClientes } = useClienteStore();
       return;
     }
 
+    // Validar que el pedido tenga al menos un item
+    if (!formData.items || formData.items.length === 0) {
+      console.warn('Intento de enviar pedido sin items');
+      return;
+    }
+
     const detailItems = (formData.items || []).map((item) => ({
       product_id: item.producto?.id || item.producto || item.product_id,
       quantity: item.cantidad || item.quantity || 1
     })).filter((d) => d.product_id);
+
+    // Validar que después del mapeo y filtro tengamos items válidos
+    if (detailItems.length === 0) {
+      console.warn('No hay items válidos después del mapeo');
+      return;
+    }
 
     const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
     const observacionesConEnvio = [formData.observaciones, formData.usarEnvioPersonalizado ? `Entrega: ${direccionEntrega}` : '']
@@ -187,24 +201,46 @@ const { clientes, fetchClientes } = useClienteStore();
       detail: detailItems
     };
 
+    // Log para debug - puede removerse en producción
+    console.log('Enviando pedido con payload:', payload);
+
     onSave(payload, {
       shipping_address_override: formData.usarEnvioPersonalizado ? direccionEntrega : null
     });
   };
 
   const handleAddItem = () => {
-    if (!selectedProducto || (cantidad || 0) <= 0) return;
+    console.log('=== DEBUGGING ADD ITEM ===');
+    console.log('selectedProducto:', selectedProducto);
+    console.log('cantidad:', cantidad);
+    console.log('productos disponibles:', productos);
+    console.log('formData.items actual:', formData.items);
+    
+    if (!selectedProducto || (cantidad || 0) <= 0) {
+      console.log('❌ Validación falló - selectedProducto:', !!selectedProducto, 'cantidad:', cantidad);
+      return;
+    }
+    
     const item = {
       id: Date.now(),
       producto: selectedProducto,
       cantidad: cantidad || 1
     };
-    setFormData((prev) => ({
-      ...prev,
-      items: [...(prev.items || []), item]
-    }));
+    
+    console.log('✅ Item a agregar:', item);
+    
+    setFormData((prev) => {
+      const newItems = [...(prev.items || []), item];
+      console.log('📝 Actualizando formData.items de', prev.items?.length || 0, 'a', newItems.length);
+      console.log('📝 Nuevos items:', newItems);
+      return {
+        ...prev,
+        items: newItems
+      };
+    });
     setSelectedProducto(null);
     setCantidad(1);
+    console.log('=========================');
   };
 
   const handleRemoveItem = (rowData) => {
@@ -220,10 +256,19 @@ const { clientes, fetchClientes } = useClienteStore();
       <Button
         label="Guardar Pedido"
         icon="pi pi-check"
-        onClick={handleSubmit}
-        disabled={!formData.cliente}
+        onClick={() => {
+          console.log('🔘 Botón Guardar clickeado - cliente:', !!formData.cliente, 'items:', formData.items?.length || 0);
+          handleSubmit();
+        }}
+        disabled={!formData.cliente || !formData.items?.length}
         loading={loading}
       />
+      {/* Debug info */}
+      {process.env.NODE_ENV === 'development' && (
+        <small className="text-xs text-gray-500 ml-2 self-center">
+          Cliente: {formData.cliente ? '✅' : '❌'} | Items: {formData.items?.length || 0}
+        </small>
+      )}
     </div>
   );
 
@@ -402,6 +447,11 @@ const { clientes, fetchClientes } = useClienteStore();
               style={{ width: '8%' }}
             />
           </DataTable>
+          {(!formData.items || formData.items.length === 0) && (
+            <small className="text-orange-500 block mt-2 font-medium">
+              ⚠️ Debes agregar al menos un producto para crear el pedido
+            </small>
+          )}
         </div>
       </div>
     </Dialog>
