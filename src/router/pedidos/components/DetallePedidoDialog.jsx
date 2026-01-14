@@ -15,6 +15,12 @@ const formatAddress = (addr) => {
   return [main, extra].filter(Boolean).join(' ').trim() || '-';
 };
 
+const STATUS_MAP = {
+  pending: 'Pendiente',
+  completed: 'Completado',
+  cancelled: 'Cancelado'
+};
+
 const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
   const detalles = Array.isArray(pedido?.detalles)
     ? pedido.detalles
@@ -28,7 +34,8 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
   const direccionEnvio = pedido?.shipping_address_str
     || formatAddress(pedido?.shipping_address || pedido?.customer?.address);
   const observaciones = pedido?.observations || pedido?.observaciones || '-';
-  const estado = pedido?.state || pedido?.estado || '-';
+  const estadoRaw = pedido?.state || pedido?.estado || '-';
+  const estado = STATUS_MAP[estadoRaw] || estadoRaw || '-';
   const fecha = pedido?.date || pedido?.fechaPedido || '-';
 
   const formatCurrency = (value) =>

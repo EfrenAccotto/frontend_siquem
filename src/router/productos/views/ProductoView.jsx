@@ -6,17 +6,48 @@ import ProductoForm from '../components/ProductoForm';
 import { Toast } from 'primereact/toast';
 import { confirmDialog } from 'primereact/confirmdialog';
 
+const formatStockValue = (value, unit) => {
+  const num = Number(value ?? 0);
+  const isKg = unit === 'kg';
+  return new Intl.NumberFormat('es-AR', {
+    minimumFractionDigits: isKg ? 3 : 0,
+    maximumFractionDigits: isKg ? 3 : 0
+  }).format(isNaN(num) ? 0 : num);
+};
+
+const formatStockUnit = (unit) => {
+  if (unit === 'kg') return 'Kg';
+  if (unit === 'unit') return 'Unidad';
+  return unit || '-';
+};
+
 const Columns = [
-  { field: 'name', header: 'Nombre', style: { width: '20%' } },
-  { field: 'description', header: 'Descripcion', style: { width: '30%' } },
-  { field: 'price', header: 'Precio', style: { width: '15%' }, body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.price) },
-  { field: 'stock', header: 'Stock Total', style: { width: '10%' } },
-  { field: 'reserve_stock', header: 'Stock Reservado', style: { width: '12%' } },
+  { field: 'name', header: 'Nombre', style: { width: '18%' } },
+  { field: 'description', header: 'Descripcion', style: { width: '24%' } },
+  { field: 'price', header: 'Precio', style: { width: '12%' }, body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.price) },
+  {
+    field: 'stock_unit',
+    header: 'Unidad de Medida',
+    style: { width: '12%' },
+    body: (rowData) => formatStockUnit(rowData.stock_unit)
+  },
+  {
+    field: 'stock',
+    header: 'Stock Total',
+    style: { width: '10%' },
+    body: (rowData) => formatStockValue(rowData.stock, rowData.stock_unit)
+  },
+  {
+    field: 'reserve_stock',
+    header: 'Stock Reservado',
+    style: { width: '12%' },
+    body: (rowData) => formatStockValue(rowData.reserve_stock, rowData.stock_unit)
+  },
   {
     field: 'stock_disponible',
     header: 'Stock Disponible',
-    style: { width: '13%' },
-    body: (rowData) => (rowData.stock - rowData.reserve_stock)
+    style: { width: '12%' },
+    body: (rowData) => formatStockValue((Number(rowData.stock) || 0) - (Number(rowData.reserve_stock) || 0), rowData.stock_unit)
   },
 ];
 

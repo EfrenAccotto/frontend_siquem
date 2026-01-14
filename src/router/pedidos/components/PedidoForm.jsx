@@ -11,11 +11,11 @@ import { Column } from 'primereact/column';
 import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
+import UbicacionService from '@/router/ubicacion/services/UbicacionService';
 
-// Estados permitidos por el backend: solo pending | completed | cancelled
+// Estados permitidos en el formulario (completed solo desde Generar Venta)
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
-  { label: 'Completado', value: 'completed' },
   { label: 'Cancelado', value: 'cancelled' }
 ];
 
@@ -29,13 +29,18 @@ const { clientes, fetchClientes } = useClienteStore();
     estado: 'pending',
     items: [],
     usarEnvioPersonalizado: false,
-    envioLocalidad: '',
-    envioDireccion: '',
-    envioZona: ''
+    envioLocalidad: null,
+    envioZona: null,
+    envioCalle: '',
+    envioNumero: ''
   });
   const [productos, setProductos] = useState([]);
   const [selectedProducto, setSelectedProducto] = useState(null);
   const [cantidad, setCantidad] = useState(1);
+  const [cantidadError, setCantidadError] = useState('');
+  const [localidades, setLocalidades] = useState([]);
+  const [zonas, setZonas] = useState([]);
+  const [direccionErrors, setDireccionErrors] = useState({});
 
   const resolveClienteValue = (clienteRaw, clientesList = []) => {
     if (!clienteRaw) return null;
@@ -88,15 +93,43 @@ const { clientes, fetchClientes } = useClienteStore();
     return [calleNumero, locProv ? `(${locProv})` : ''].filter(Boolean).join(' ').trim();
   };
 
+  const formatLocalidad = (loc) => {
+    if (!loc) return '';
+    const prov = loc.province?.name || loc.province_name || '';
+    return [loc.name, prov].filter(Boolean).join(', ');
+  };
+
+  const formatZona = (zona) => zona?.name || '';
+
   const buildDireccionEntrega = (data, cliente) => {
-    const dir = (data.envioDireccion || '').trim();
-    const loc = (data.envioLocalidad || '').trim();
-    const zona = (data.envioZona || '').trim();
+    const calle = (data.envioCalle || '').trim();
+    const numero = (data.envioNumero || '').trim();
+    const dir = [calle, numero].filter(Boolean).join(' ').trim();
+    const loc = formatLocalidad(data.envioLocalidad);
+    const zona = formatZona(data.envioZona);
     if (dir || loc || zona) {
       const base = [dir, loc].filter(Boolean).join(' - ');
       return `${base}${zona ? ` (Zona: ${zona})` : ''}`.trim();
     }
     return formatDireccionCliente(cliente);
+  };
+
+  const isUnitProduct = (producto) => (producto?.stock_unit || 'unit') === 'unit';
+
+  const normalizeCantidad = (producto, value) => {
+    const num = Number(value);
+    if (!isFinite(num)) return 0;
+    if (isUnitProduct(producto)) return Math.trunc(num);
+    return Number(num.toFixed(3));
+  };
+
+  const validateCantidad = (producto, value) => {
+    const num = Number(value);
+    if (!isFinite(num) || num <= 0) return 'La cantidad debe ser mayor a 0';
+    if (isUnitProduct(producto) && !Number.isInteger(num)) {
+      return 'La cantidad debe ser un numero entero para unidades';
+    }
+    return '';
   };
 
   useEffect(() => {
@@ -117,9 +150,10 @@ const { clientes, fetchClientes } = useClienteStore();
           estado: pedido.state || pedido.estado || 'pending',
           items: items,
           usarEnvioPersonalizado: false,
-          envioLocalidad: '',
-          envioDireccion: '',
-          envioZona: ''
+          envioLocalidad: null,
+          envioZona: null,
+          envioCalle: '',
+          envioNumero: ''
         });
       } else {
         setFormData({
@@ -129,17 +163,47 @@ const { clientes, fetchClientes } = useClienteStore();
           estado: 'pending',
           items: [],
           usarEnvioPersonalizado: false,
-          envioLocalidad: '',
-          envioDireccion: '',
-          envioZona: ''
+          envioLocalidad: null,
+          envioZona: null,
+          envioCalle: '',
+          envioNumero: ''
         });
       }
       setSelectedProducto(null);
       setCantidad(1);
+      setCantidadError('');
+      setDireccionErrors({});
     };
 
     initForm();
   }, [visible, fetchClientes, pedido]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const loadLocalidades = async () => {
+      const resp = await UbicacionService.getLocalidades();
+      if (resp.success) {
+        setLocalidades(resp.data || []);
+      }
+    };
+    loadLocalidades();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!formData.usarEnvioPersonalizado) return;
+    const locId = formData.envioLocalidad?.id;
+    if (!locId) {
+      setZonas([]);
+      return;
+    }
+    const loadZonas = async () => {
+      const resp = await UbicacionService.getZonas(locId);
+      if (resp.success) {
+        setZonas(resp.data || []);
+      }
+    };
+    loadZonas();
+  }, [formData.envioLocalidad, formData.usarEnvioPersonalizado]);
 
   const loadProductos = async () => {
     try {
@@ -157,12 +221,21 @@ const { clientes, fetchClientes } = useClienteStore();
 
   const clienteLabel = (c) => `${c?.first_name || ''} ${c?.last_name || ''}`.trim() || c?.nombreCompleto || c?.name || 'Sin nombre';
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.cliente) return;
 
     // No permitir crear pedidos en estado cancelado
     if (!pedido && formData.estado === 'cancelled') {
       return;
+    }
+
+    // No permitir crear pedidos en estado completado desde este formulario
+    if (!pedido && formData.estado === 'completed') {
+      return;
+    }
+
+    if (!formData.usarEnvioPersonalizado && Object.keys(direccionErrors).length) {
+      setDireccionErrors({});
     }
 
     // Validar que el pedido tenga al menos un item
@@ -173,7 +246,7 @@ const { clientes, fetchClientes } = useClienteStore();
 
     const detailItems = (formData.items || []).map((item) => ({
       product_id: item.producto?.id || item.producto || item.product_id,
-      quantity: item.cantidad || item.quantity || 1
+      quantity: normalizeCantidad(item.producto, item.cantidad || item.quantity || 1)
     })).filter((d) => d.product_id);
 
     // Validar que después del mapeo y filtro tengamos items válidos
@@ -182,15 +255,44 @@ const { clientes, fetchClientes } = useClienteStore();
       return;
     }
 
+    let shippingAddressId = formData.cliente?.address?.id || null;
     const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
+
+    if (formData.usarEnvioPersonalizado) {
+      const newErrors = {};
+      if (!formData.envioLocalidad?.id) newErrors.envioLocalidad = 'Seleccione una localidad';
+      if (!formData.envioZona?.id) newErrors.envioZona = 'Seleccione una zona';
+      if (!formData.envioCalle?.trim()) newErrors.envioCalle = 'Ingrese la calle';
+      if (!formData.envioNumero?.trim()) newErrors.envioNumero = 'Ingrese la altura';
+
+      setDireccionErrors(newErrors);
+      if (Object.keys(newErrors).length > 0) {
+        return;
+      }
+
+      const addressPayload = {
+        street: formData.envioCalle.trim(),
+        number: formData.envioNumero.trim(),
+        locality_id: formData.envioLocalidad.id
+      };
+
+      const createdAddress = await UbicacionService.createAddress(addressPayload);
+      if (!createdAddress.success) {
+        console.warn('No se pudo crear la direccion:', createdAddress.error);
+        return;
+      }
+
+      shippingAddressId = createdAddress.data?.id || null;
+      if (shippingAddressId && formData.envioZona?.id) {
+        await UbicacionService.createZoneAddress({
+          zone_id: formData.envioZona.id,
+          address_id: shippingAddressId
+        });
+      }
+    }
     const observacionesConEnvio = [formData.observaciones, formData.usarEnvioPersonalizado ? `Entrega: ${direccionEntrega}` : '']
       .filter(Boolean)
       .join('\n');
-
-    const shippingAddressId =
-      formData.usarEnvioPersonalizado
-        ? null // no sobrescribir con la dirección del cliente si se ingresó una personalizada
-        : (formData.cliente.address?.id || null);
 
     const payload = {
       customer_id: formData.cliente.id || formData.cliente,
@@ -215,16 +317,22 @@ const { clientes, fetchClientes } = useClienteStore();
     console.log('cantidad:', cantidad);
     console.log('productos disponibles:', productos);
     console.log('formData.items actual:', formData.items);
-    
-    if (!selectedProducto || (cantidad || 0) <= 0) {
-      console.log('❌ Validación falló - selectedProducto:', !!selectedProducto, 'cantidad:', cantidad);
+    const error = validateCantidad(selectedProducto, cantidad);
+    if (error) {
+      setCantidadError(error);
       return;
     }
-    
+
+    if (!selectedProducto || (cantidad || 0) <= 0) {
+      console.log('??O Validaci??n fall?? - selectedProducto:', !!selectedProducto, 'cantidad:', cantidad);
+      return;
+    }
+
+    setCantidadError('');
     const item = {
       id: Date.now(),
       producto: selectedProducto,
-      cantidad: cantidad || 1
+      cantidad: normalizeCantidad(selectedProducto, cantidad || 1)
     };
     
     console.log('✅ Item a agregar:', item);
@@ -263,12 +371,7 @@ const { clientes, fetchClientes } = useClienteStore();
         disabled={!formData.cliente || !formData.items?.length}
         loading={loading}
       />
-      {/* Debug info */}
-      {process.env.NODE_ENV === 'development' && (
-        <small className="text-xs text-gray-500 ml-2 self-center">
-          Cliente: {formData.cliente ? '✅' : '❌'} | Items: {formData.items?.length || 0}
-        </small>
-      )}
+      
     </div>
   );
 
@@ -320,14 +423,18 @@ const { clientes, fetchClientes } = useClienteStore();
         <div className="col-12 md:col-6">
           <div className="field">
             <label className="font-bold">Estado</label>
-            <Dropdown
-              value={formData.estado}
-              options={estadoOptions}
-              optionLabel="label"
-              optionValue="value"
-              onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.value }))}
-              placeholder="Seleccione estado"
-            />
+            {formData.estado === 'completed' ? (
+              <InputText value="Completado" readOnly />
+            ) : (
+              <Dropdown
+                value={formData.estado}
+                options={estadoOptions}
+                optionLabel="label"
+                optionValue="value"
+                onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.value }))}
+                placeholder="Seleccione estado"
+              />
+            )}
           </div>
         </div>
 
@@ -367,27 +474,60 @@ const { clientes, fetchClientes } = useClienteStore();
             <div className="formgrid grid">
               <div className="field col-12 md:col-4">
                 <label className="font-bold">Localidad</label>
-                <InputText
+                <Dropdown
                   value={formData.envioLocalidad}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, envioLocalidad: e.target.value }))}
-                  placeholder="Ej: Bahía Blanca"
+                  options={localidades}
+                  optionLabel="name"
+                  placeholder="Seleccione localidad"
+                  filter
+                  itemTemplate={(loc) => formatLocalidad(loc)}
+                  valueTemplate={(loc) => formatLocalidad(loc)}
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    envioLocalidad: e.value,
+                    envioZona: null
+                  }))}
                 />
+                {direccionErrors.envioLocalidad && (
+                  <small className="p-error">{direccionErrors.envioLocalidad}</small>
+                )}
               </div>
               <div className="field col-12 md:col-4">
-                <label className="font-bold">Dirección</label>
+                <label className="font-bold">Calle</label>
                 <InputText
-                  value={formData.envioDireccion}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, envioDireccion: e.target.value }))}
-                  placeholder="Calle y número"
+                  value={formData.envioCalle}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioCalle: e.target.value }))}
+                  placeholder="Ej: Mitre"
                 />
+                {direccionErrors.envioCalle && (
+                  <small className="p-error">{direccionErrors.envioCalle}</small>
+                )}
+              </div>
+              <div className="field col-12 md:col-4">
+                <label className="font-bold">Altura</label>
+                <InputText
+                  value={formData.envioNumero}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioNumero: e.target.value }))}
+                  placeholder="Ej: 123"
+                />
+                {direccionErrors.envioNumero && (
+                  <small className="p-error">{direccionErrors.envioNumero}</small>
+                )}
               </div>
               <div className="field col-12 md:col-4">
                 <label className="font-bold">Zona</label>
-                <InputText
+                <Dropdown
                   value={formData.envioZona}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, envioZona: e.target.value }))}
-                  placeholder="Ej: Zona sur"
+                  options={zonas}
+                  optionLabel="name"
+                  placeholder="Seleccione zona"
+                  filter
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioZona: e.value }))}
+                  disabled={!formData.envioLocalidad}
                 />
+                {direccionErrors.envioZona && (
+                  <small className="p-error">{direccionErrors.envioZona}</small>
+                )}
               </div>
             </div>
           </div>
@@ -401,7 +541,7 @@ const { clientes, fetchClientes } = useClienteStore();
                 <Dropdown
                   value={selectedProducto}
                   options={productos}
-                  onChange={(e) => setSelectedProducto(e.value)}
+                  onChange={(e) => { setSelectedProducto(e.value); setCantidadError(''); setCantidad(1); }}
                   optionLabel="name"
                   placeholder="Seleccione producto"
                   filter
@@ -410,11 +550,16 @@ const { clientes, fetchClientes } = useClienteStore();
               <div className="field col-12 md:col-3">
                 <InputNumber
                   value={cantidad}
-                  onValueChange={(e) => setCantidad(e.value)}
+                  onValueChange={(e) => { setCantidad(e.value); setCantidadError(''); }}
                   showButtons
-                  min={1}
+                  min={isUnitProduct(selectedProducto) ? 1 : 0.001}
+                  maxFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
+                  minFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
                   placeholder="Cantidad"
                 />
+                {cantidadError && (
+                  <small className="p-error">{cantidadError}</small>
+                )}
               </div>
               <div className="field col-12 md:col-3">
                 <Button

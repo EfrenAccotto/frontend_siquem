@@ -2,6 +2,7 @@ import { Dialog } from 'primereact/dialog';
 import { InputText } from 'primereact/inputtext';
 import { InputNumber } from 'primereact/inputnumber';
 import { InputTextarea } from 'primereact/inputtextarea';
+import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { useState, useEffect } from 'react';
 
@@ -10,7 +11,8 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
     name: '',
     description: '',
     price: 0,
-    stock: 0
+    stock: 0,
+    stock_unit: 'unit'
   });
 
   const [errors, setErrors] = useState({});
@@ -21,14 +23,16 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
         name: producto.name || '',
         description: producto.description || '',
         price: producto.price || 0,
-        stock: producto.stock || 0
+        stock: producto.stock || 0,
+        stock_unit: producto.stock_unit || 'unit'
       });
     } else {
       setFormData({
         name: '',
         description: '',
         price: 0,
-        stock: 0
+        stock: 0,
+        stock_unit: 'unit'
       });
     }
     setErrors({});
@@ -60,6 +64,10 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
 
     if (formData.stock < 0) {
       newErrors.stock = 'El stock no puede ser negativo';
+    }
+
+    if (formData.stock_unit === 'unit' && !Number.isInteger(Number(formData.stock))) {
+      newErrors.stock = 'El stock debe ser un numero entero para unidades';
     }
 
     setErrors(newErrors);
@@ -138,7 +146,7 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
             </div>
           </div>
 
-          <div className="col-12 md:col-6">
+          <div className="col-12 md:col-4">
             <div className="field">
               <label htmlFor="price" className="font-bold">
                 Precio *
@@ -158,7 +166,7 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
             </div>
           </div>
 
-          <div className="col-12 md:col-6">
+          <div className="col-12 md:col-4">
             <div className="field">
               <label htmlFor="stock" className="font-bold">
                 Stock Inicial *
@@ -169,11 +177,33 @@ const ProductoForm = ({ visible, producto, onHide, onSave, loading }) => {
                 onValueChange={(e) => handleChange('stock', e.value)}
                 showButtons
                 min={0}
+                maxFractionDigits={formData.stock_unit === 'kg' ? 3 : 0}
+                minFractionDigits={formData.stock_unit === 'kg' ? 3 : 0}
                 className={errors.stock ? 'p-invalid' : ''}
               />
               {errors.stock && (
                 <small className="p-error">{errors.stock}</small>
               )}
+            </div>
+          </div>
+
+          <div className="col-12 md:col-4">
+            <div className="field">
+              <label htmlFor="stock_unit" className="font-bold">
+                Unidad de medida *
+              </label>
+              <Dropdown
+                id="stock_unit"
+                value={formData.stock_unit}
+                options={[
+                  { label: 'Unidades', value: 'unit' },
+                  { label: 'Kilogramos', value: 'kg' }
+                ]}
+                optionLabel="label"
+                optionValue="value"
+                onChange={(e) => handleChange('stock_unit', e.value)}
+                placeholder="Seleccione unidad"
+              />
             </div>
           </div>
 

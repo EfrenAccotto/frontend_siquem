@@ -61,6 +61,24 @@ class UbicacionService {
       return { success: true, data: [], status: error.response?.status || 500 };
     }
   }
+
+  static async createAddress(payload) {
+    try {
+      const response = await axios.post(`${BASE_URL}/addresses/`, payload);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data || 'Error al crear dirección', status: error.response?.status || 500 };
+    }
+  }
+
+  static async createZoneAddress(payload) {
+    try {
+      const response = await axios.post(`${BASE_URL}/zone-addresses/`, payload);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return { success: false, error: error.response?.data || 'Error al asociar zona', status: error.response?.status || 500 };
+    }
+  }
 }
 
 export default UbicacionService;

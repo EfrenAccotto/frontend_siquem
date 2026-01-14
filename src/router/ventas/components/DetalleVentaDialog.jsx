@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import VentaService from '../services/VentaService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
 
-const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
+const DetalleVentaDialog = ({ visible, venta, onHide }) => {
     const [detalles, setDetalles] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('-');
     const [fechaVenta, setFechaVenta] = useState('-');
@@ -151,24 +151,6 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
         return detalles.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     };
 
-    const handleGuardar = () => {
-        // Validar que todos los items tengan producto y cantidad
-        const itemsValidos = detalles.every(item => item.producto && item.cantidad > 0);
-
-        if (!itemsValidos) {
-            return; // Aquí podrías mostrar un toast de error
-        }
-
-        const ventaActualizada = {
-            ...venta,
-            detalles: detalles,
-            montoTotal: calcularTotal()
-        };
-
-        onSave(ventaActualizada);
-        onHide();
-    };
-
     const footer = (
         <div className="flex justify-content-between align-items-center">
             <div className="text-xl font-bold">
@@ -176,16 +158,10 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
             </div>
             <div className="flex gap-2">
                 <Button
-                    label="Cancelar"
+                    label="Cerrar"
                     icon="pi pi-times"
                     onClick={onHide}
                     className="p-button-text"
-                />
-                <Button
-                    label="Guardar"
-                    icon="pi pi-check"
-                    onClick={handleGuardar}
-                    autoFocus
                 />
             </div>
         </div>

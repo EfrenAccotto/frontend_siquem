@@ -281,21 +281,6 @@ const VentaView = () => {
     }
   };
 
-  const handleGuardarDetalle = (ventaActualizada) => {
-    const ventasActualizadas = ventas.map(v =>
-      v.id === ventaActualizada.id ? ventaActualizada : v
-    );
-    setVentas(ventasActualizadas);
-    setSelectedVenta(ventaActualizada);
-
-    toast.current?.show({
-      severity: 'success',
-      summary: 'Éxito',
-      detail: 'Detalle de venta actualizado correctamente',
-      life: 3000
-    });
-  };
-
   const eliminarSeleccionado = async () => {
     if (!selectedVenta) return;
     try {
@@ -439,7 +424,6 @@ const VentaView = () => {
         visible={showDetalleDialog}
         venta={selectedVenta}
         onHide={() => setShowDetalleDialog(false)}
-        onSave={handleGuardarDetalle}
       />
     </div>
   );
