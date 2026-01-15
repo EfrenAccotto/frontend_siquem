@@ -41,13 +41,37 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
   const formatCurrency = (value) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
+  const getStockUnit = (rowData) =>
+    rowData?.producto?.stock_unit ||
+    rowData?.product?.stock_unit ||
+    rowData?.product_data?.stock_unit ||
+    rowData?.product_stock_unit ||
+    rowData?.stock_unit ||
+    'unit';
+
+  const formatCantidadConUnidad = (qty, stockUnit) => {
+    const num = Number(qty);
+    if (!isFinite(num)) return '-';
+    if (stockUnit === 'kg') {
+      const formatted = new Intl.NumberFormat('es-AR', {
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3
+      }).format(num);
+      return `${formatted} kg`;
+    }
+    return `${Math.trunc(num)} u`;
+  };
+
   const productoTemplate = (rowData) =>
     rowData.producto?.name ||
     rowData.product?.name ||
     rowData.product_name ||
     (rowData.product_id ? `Producto ${rowData.product_id}` : '-');
 
-  const cantidadTemplate = (rowData) => rowData.cantidad ?? rowData.quantity ?? 1;
+  const cantidadTemplate = (rowData) => {
+    const qty = rowData.cantidad ?? rowData.quantity ?? 1;
+    return formatCantidadConUnidad(qty, getStockUnit(rowData));
+  };
 
   const precioTemplate = (rowData) => {
     const price =
