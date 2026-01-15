@@ -20,7 +20,8 @@ const ReporteView = () => {
     const tiposReporte = [
         { label: 'Ventas', value: 'ventas' },
         { label: 'Productos', value: 'productos' },
-        { label: 'Clientes', value: 'clientes' }
+        { label: 'Clientes', value: 'clientes' },
+        { label: 'Pedidos', value: 'pedidos' }
     ];
 
     // Opciones para el selector de formato
