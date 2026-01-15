@@ -6,15 +6,27 @@ import { useState, useEffect } from 'react';
 import VentaService from '../services/VentaService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
 
-const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
+const DetalleVentaDialog = ({ visible, venta, onHide }) => {
     const [detalles, setDetalles] = useState([]);
     const [clienteNombre, setClienteNombre] = useState('-');
     const [fechaVenta, setFechaVenta] = useState('-');
     const [formaPago, setFormaPago] = useState('-');
     const [total, setTotal] = useState(0);
 
+    const isDev = import.meta?.env?.MODE !== 'production';
+
     const mapDetalle = (d) => {
-        const producto = d.product || d.producto || d.product_data || { id: d.product_id, name: d.product_name };
+        if (isDev) {
+            console.log('[DetalleVentaDialog] detalle raw:', d);
+        }
+        const productoBase = d.product || d.producto || d.product_data || { id: d.product_id, name: d.product_name };
+        const producto = {
+            ...productoBase,
+            stock_unit: productoBase?.stock_unit || d.product_stock_unit || d.stock_unit
+        };
+        if (isDev) {
+            console.log('[DetalleVentaDialog] producto resuelto:', producto, 'stock_unit:', producto?.stock_unit);
+        }
         const cantidad = d.quantity || d.cantidad || d.qty || 1;
         const precioUnit = d.price ?? d.precio ?? d.precioUnitario ?? d.unit_price ?? d.unit_price_with_tax ?? d.product_price ?? producto.price ?? 0;
         const subtotalRaw = d.subtotal ?? d.total ?? d.computed_subtotal ?? (precioUnit * cantidad);
@@ -50,8 +62,12 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
                 return;
             }
             const resp = await VentaService.getDetailsBySaleId(venta.id);
+            if (isDev) {
+                console.log('[DetalleVentaDialog] getDetailsBySaleId resp:', resp);
+                console.log('[DetalleVentaDialog] detalles venta raw:', resp?.data);
+            }
             if (resp.success) {
-                const list = resp.data || [];
+                const list = resp.data?.results || resp.data || [];
                 if (list.length > 0) {
                     const mapped = list.map(mapDetalle);
                     setDetalles(mapped);
@@ -65,6 +81,11 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
             if (orderId) {
                 try {
                     const orderResp = await PedidoService.getById(orderId);
+                    if (isDev) {
+                        console.log('[DetalleVentaDialog] PedidoService.getById resp:', orderResp);
+                        console.log('[DetalleVentaDialog] pedido raw:', orderResp?.data);
+                        console.log('[DetalleVentaDialog] detalles pedido raw:', extractOrderDetails(orderResp?.data));
+                    }
                     if (orderResp.success) {
                         const detallesPedido = extractOrderDetails(orderResp.data);
                         const mapped = detallesPedido.map(mapDetalle);
@@ -147,45 +168,40 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
         return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.subtotal || 0);
     };
 
-    const calcularTotal = () => {
-        return detalles.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+    const getStockUnit = (rowData) =>
+        rowData?.producto?.stock_unit ||
+        rowData?.product?.stock_unit ||
+        rowData?.product_data?.stock_unit ||
+        rowData?.stock_unit ||
+        'unit';
+
+    const formatCantidadConUnidad = (qty, stockUnit) => {
+        const num = Number(qty);
+        if (!isFinite(num)) return '-';
+        if (stockUnit === 'kg') {
+            const formatted = new Intl.NumberFormat('es-AR', {
+                minimumFractionDigits: 3,
+                maximumFractionDigits: 3
+            }).format(num);
+            return `${formatted} kg`;
+        }
+        return `${Math.trunc(num)} u`;
     };
 
-    const handleGuardar = () => {
-        // Validar que todos los items tengan producto y cantidad
-        const itemsValidos = detalles.every(item => item.producto && item.cantidad > 0);
-
-        if (!itemsValidos) {
-            return; // Aquí podrías mostrar un toast de error
-        }
-
-        const ventaActualizada = {
-            ...venta,
-            detalles: detalles,
-            montoTotal: calcularTotal()
-        };
-
-        onSave(ventaActualizada);
-        onHide();
+    const calcularTotal = () => {
+        return detalles.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     };
 
     const footer = (
         <div className="flex justify-content-between align-items-center">
             <div className="text-xl font-bold">
-                Total: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(calcularTotal())}
             </div>
             <div className="flex gap-2">
                 <Button
-                    label="Cancelar"
+                    label="Cerrar"
                     icon="pi pi-times"
                     onClick={onHide}
                     className="p-button-text"
-                />
-                <Button
-                    label="Guardar"
-                    icon="pi pi-check"
-                    onClick={handleGuardar}
-                    autoFocus
                 />
             </div>
         </div>
@@ -240,7 +256,7 @@ const DetalleVentaDialog = ({ visible, venta, onHide, onSave }) => {
                     />
                     <Column
                         header="Cantidad"
-                        body={(rowData) => rowData.cantidad}
+                        body={(rowData) => formatCantidadConUnidad(rowData.cantidad, getStockUnit(rowData))}
                         style={{ width: '15%' }}
                     />
                     <Column

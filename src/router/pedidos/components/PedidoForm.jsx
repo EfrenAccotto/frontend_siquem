@@ -11,16 +11,28 @@ import { Column } from 'primereact/column';
 import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
+import UbicacionService from '@/router/ubicacion/services/UbicacionService';
 
-// Estados permitidos por el backend: solo pending | completed | cancelled
-const estadoOptions = [
+// Estados base permitidos en el formulario
+const estadoOptionsBase = [
   { label: 'Pendiente', value: 'pending' },
-  { label: 'Completado', value: 'completed' },
-  { label: 'Cancelado', value: 'cancelled' }
+  { label: 'Cancelado', value: 'cancelled' },
+  { label: 'Completado', value: 'completed' }
 ];
 
 const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
-const { clientes, fetchClientes } = useClienteStore();
+  const { clientes, fetchClientes } = useClienteStore();
+  
+  // Determinar opciones de estado basado en si es edición o creación
+  const getEstadoOptions = () => {
+    if (!pedido) {
+      // Modo creación: permitir todos los estados incluyendo completed
+      return estadoOptionsBase;
+    } else {
+      // Modo edición: no permitir cambiar a completed
+      return estadoOptionsBase.filter(option => option.value !== 'completed');
+    }
+  };
 
   const [formData, setFormData] = useState({
     cliente: null,
@@ -29,13 +41,18 @@ const { clientes, fetchClientes } = useClienteStore();
     estado: 'pending',
     items: [],
     usarEnvioPersonalizado: false,
-    envioLocalidad: '',
-    envioDireccion: '',
-    envioZona: ''
+    envioLocalidad: null,
+    envioZona: null,
+    envioCalle: '',
+    envioNumero: ''
   });
   const [productos, setProductos] = useState([]);
   const [selectedProducto, setSelectedProducto] = useState(null);
   const [cantidad, setCantidad] = useState(1);
+  const [cantidadError, setCantidadError] = useState('');
+  const [localidades, setLocalidades] = useState([]);
+  const [zonas, setZonas] = useState([]);
+  const [direccionErrors, setDireccionErrors] = useState({});
 
   const resolveClienteValue = (clienteRaw, clientesList = []) => {
     if (!clienteRaw) return null;
@@ -88,15 +105,43 @@ const { clientes, fetchClientes } = useClienteStore();
     return [calleNumero, locProv ? `(${locProv})` : ''].filter(Boolean).join(' ').trim();
   };
 
+  const formatLocalidad = (loc) => {
+    if (!loc) return '';
+    const prov = loc.province?.name || loc.province_name || '';
+    return [loc.name, prov].filter(Boolean).join(', ');
+  };
+
+  const formatZona = (zona) => zona?.name || '';
+
   const buildDireccionEntrega = (data, cliente) => {
-    const dir = (data.envioDireccion || '').trim();
-    const loc = (data.envioLocalidad || '').trim();
-    const zona = (data.envioZona || '').trim();
+    const calle = (data.envioCalle || '').trim();
+    const numero = (data.envioNumero || '').trim();
+    const dir = [calle, numero].filter(Boolean).join(' ').trim();
+    const loc = formatLocalidad(data.envioLocalidad);
+    const zona = formatZona(data.envioZona);
     if (dir || loc || zona) {
       const base = [dir, loc].filter(Boolean).join(' - ');
       return `${base}${zona ? ` (Zona: ${zona})` : ''}`.trim();
     }
     return formatDireccionCliente(cliente);
+  };
+
+  const isUnitProduct = (producto) => (producto?.stock_unit || 'unit') === 'unit';
+
+  const normalizeCantidad = (producto, value) => {
+    const num = Number(value);
+    if (!isFinite(num)) return 0;
+    if (isUnitProduct(producto)) return Math.trunc(num);
+    return Number(num.toFixed(3));
+  };
+
+  const validateCantidad = (producto, value) => {
+    const num = Number(value);
+    if (!isFinite(num) || num <= 0) return 'La cantidad debe ser mayor a 0';
+    if (isUnitProduct(producto) && !Number.isInteger(num)) {
+      return 'La cantidad debe ser un numero entero para unidades';
+    }
+    return '';
   };
 
   useEffect(() => {
@@ -106,18 +151,21 @@ const { clientes, fetchClientes } = useClienteStore();
       await fetchClientes();
       const clientesList = useClienteStore.getState()?.clientes || clientes;
       const productosList = (await loadProductos()) || productos;
+      
       const clienteDelPedido = resolveClienteValue(pedido?.customer || pedido?.cliente, clientesList);
       if (pedido) {
+        const items = mapItemsFromPedido(pedido, productosList);
         setFormData({
           cliente: clienteDelPedido,
           observaciones: pedido.observations || pedido.observaciones || '',
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
-          items: mapItemsFromPedido(pedido, productosList),
+          items: items,
           usarEnvioPersonalizado: false,
-          envioLocalidad: '',
-          envioDireccion: '',
-          envioZona: ''
+          envioLocalidad: null,
+          envioZona: null,
+          envioCalle: '',
+          envioNumero: ''
         });
       } else {
         setFormData({
@@ -127,17 +175,47 @@ const { clientes, fetchClientes } = useClienteStore();
           estado: 'pending',
           items: [],
           usarEnvioPersonalizado: false,
-          envioLocalidad: '',
-          envioDireccion: '',
-          envioZona: ''
+          envioLocalidad: null,
+          envioZona: null,
+          envioCalle: '',
+          envioNumero: ''
         });
       }
       setSelectedProducto(null);
       setCantidad(1);
+      setCantidadError('');
+      setDireccionErrors({});
     };
 
     initForm();
   }, [visible, fetchClientes, pedido]);
+
+  useEffect(() => {
+    if (!visible) return;
+    const loadLocalidades = async () => {
+      const resp = await UbicacionService.getLocalidades();
+      if (resp.success) {
+        setLocalidades(resp.data || []);
+      }
+    };
+    loadLocalidades();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!formData.usarEnvioPersonalizado) return;
+    const locId = formData.envioLocalidad?.id;
+    if (!locId) {
+      setZonas([]);
+      return;
+    }
+    const loadZonas = async () => {
+      const resp = await UbicacionService.getZonas(locId);
+      if (resp.success) {
+        setZonas(resp.data || []);
+      }
+    };
+    loadZonas();
+  }, [formData.envioLocalidad, formData.usarEnvioPersonalizado]);
 
   const loadProductos = async () => {
     try {
@@ -155,7 +233,7 @@ const { clientes, fetchClientes } = useClienteStore();
 
   const clienteLabel = (c) => `${c?.first_name || ''} ${c?.last_name || ''}`.trim() || c?.nombreCompleto || c?.name || 'Sin nombre';
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.cliente) return;
 
     // No permitir crear pedidos en estado cancelado
@@ -163,20 +241,70 @@ const { clientes, fetchClientes } = useClienteStore();
       return;
     }
 
+    // Al editar, no permitir cambiar el estado a completed
+    if (pedido && formData.estado === 'completed') {
+      return;
+    }
+
+    if (!formData.usarEnvioPersonalizado && Object.keys(direccionErrors).length) {
+      setDireccionErrors({});
+    }
+
+    // Validar que el pedido tenga al menos un item
+    if (!formData.items || formData.items.length === 0) {
+      console.warn('Intento de enviar pedido sin items');
+      return;
+    }
+
     const detailItems = (formData.items || []).map((item) => ({
       product_id: item.producto?.id || item.producto || item.product_id,
-      quantity: item.cantidad || item.quantity || 1
+      quantity: normalizeCantidad(item.producto, item.cantidad || item.quantity || 1)
     })).filter((d) => d.product_id);
 
+    // Validar que después del mapeo y filtro tengamos items válidos
+    if (detailItems.length === 0) {
+      console.warn('No hay items válidos después del mapeo');
+      return;
+    }
+
+    let shippingAddressId = formData.cliente?.address?.id || null;
     const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
+
+    if (formData.usarEnvioPersonalizado) {
+      const newErrors = {};
+      if (!formData.envioLocalidad?.id) newErrors.envioLocalidad = 'Seleccione una localidad';
+      if (!formData.envioZona?.id) newErrors.envioZona = 'Seleccione una zona';
+      if (!formData.envioCalle?.trim()) newErrors.envioCalle = 'Ingrese la calle';
+      if (!formData.envioNumero?.trim()) newErrors.envioNumero = 'Ingrese la altura';
+
+      setDireccionErrors(newErrors);
+      if (Object.keys(newErrors).length > 0) {
+        return;
+      }
+
+      const addressPayload = {
+        street: formData.envioCalle.trim(),
+        number: formData.envioNumero.trim(),
+        locality_id: formData.envioLocalidad.id
+      };
+
+      const createdAddress = await UbicacionService.createAddress(addressPayload);
+      if (!createdAddress.success) {
+        console.warn('No se pudo crear la direccion:', createdAddress.error);
+        return;
+      }
+
+      shippingAddressId = createdAddress.data?.id || null;
+      if (shippingAddressId && formData.envioZona?.id) {
+        await UbicacionService.createZoneAddress({
+          zone_id: formData.envioZona.id,
+          address_id: shippingAddressId
+        });
+      }
+    }
     const observacionesConEnvio = [formData.observaciones, formData.usarEnvioPersonalizado ? `Entrega: ${direccionEntrega}` : '']
       .filter(Boolean)
       .join('\n');
-
-    const shippingAddressId =
-      formData.usarEnvioPersonalizado
-        ? null // no sobrescribir con la dirección del cliente si se ingresó una personalizada
-        : (formData.cliente.address?.id || null);
 
     const payload = {
       customer_id: formData.cliente.id || formData.cliente,
@@ -187,24 +315,52 @@ const { clientes, fetchClientes } = useClienteStore();
       detail: detailItems
     };
 
+    // Log para debug - puede removerse en producción
+    console.log('Enviando pedido con payload:', payload);
+
     onSave(payload, {
       shipping_address_override: formData.usarEnvioPersonalizado ? direccionEntrega : null
     });
   };
 
   const handleAddItem = () => {
-    if (!selectedProducto || (cantidad || 0) <= 0) return;
+    console.log('=== DEBUGGING ADD ITEM ===');
+    console.log('selectedProducto:', selectedProducto);
+    console.log('cantidad:', cantidad);
+    console.log('productos disponibles:', productos);
+    console.log('formData.items actual:', formData.items);
+    const error = validateCantidad(selectedProducto, cantidad);
+    if (error) {
+      setCantidadError(error);
+      return;
+    }
+
+    if (!selectedProducto || (cantidad || 0) <= 0) {
+      console.log('??O Validaci??n fall?? - selectedProducto:', !!selectedProducto, 'cantidad:', cantidad);
+      return;
+    }
+
+    setCantidadError('');
     const item = {
       id: Date.now(),
       producto: selectedProducto,
-      cantidad: cantidad || 1
+      cantidad: normalizeCantidad(selectedProducto, cantidad || 1)
     };
-    setFormData((prev) => ({
-      ...prev,
-      items: [...(prev.items || []), item]
-    }));
+    
+    console.log('✅ Item a agregar:', item);
+    
+    setFormData((prev) => {
+      const newItems = [...(prev.items || []), item];
+      console.log('📝 Actualizando formData.items de', prev.items?.length || 0, 'a', newItems.length);
+      console.log('📝 Nuevos items:', newItems);
+      return {
+        ...prev,
+        items: newItems
+      };
+    });
     setSelectedProducto(null);
     setCantidad(1);
+    console.log('=========================');
   };
 
   const handleRemoveItem = (rowData) => {
@@ -220,10 +376,14 @@ const { clientes, fetchClientes } = useClienteStore();
       <Button
         label="Guardar Pedido"
         icon="pi pi-check"
-        onClick={handleSubmit}
-        disabled={!formData.cliente}
+        onClick={() => {
+          console.log('🔘 Botón Guardar clickeado - cliente:', !!formData.cliente, 'items:', formData.items?.length || 0);
+          handleSubmit();
+        }}
+        disabled={!formData.cliente || !formData.items?.length}
         loading={loading}
       />
+      
     </div>
   );
 
@@ -275,14 +435,23 @@ const { clientes, fetchClientes } = useClienteStore();
         <div className="col-12 md:col-6">
           <div className="field">
             <label className="font-bold">Estado</label>
-            <Dropdown
-              value={formData.estado}
-              options={estadoOptions}
-              optionLabel="label"
-              optionValue="value"
-              onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.value }))}
-              placeholder="Seleccione estado"
-            />
+            {pedido && formData.estado === 'completed' ? (
+              <InputText value="Completado" readOnly />
+            ) : (
+              <Dropdown
+                value={formData.estado}
+                options={getEstadoOptions()}
+                optionLabel="label"
+                optionValue="value"
+                onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.value }))}
+                placeholder="Seleccione estado"
+              />
+            )}
+            {pedido && formData.estado === 'completed' && (
+              <small className="text-500 block mt-1">
+                Los pedidos completados no pueden editarse. 
+              </small>
+            )}
           </div>
         </div>
 
@@ -322,27 +491,60 @@ const { clientes, fetchClientes } = useClienteStore();
             <div className="formgrid grid">
               <div className="field col-12 md:col-4">
                 <label className="font-bold">Localidad</label>
-                <InputText
+                <Dropdown
                   value={formData.envioLocalidad}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, envioLocalidad: e.target.value }))}
-                  placeholder="Ej: Bahía Blanca"
+                  options={localidades}
+                  optionLabel="name"
+                  placeholder="Seleccione localidad"
+                  filter
+                  itemTemplate={(loc) => formatLocalidad(loc)}
+                  valueTemplate={(loc) => formatLocalidad(loc)}
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    envioLocalidad: e.value,
+                    envioZona: null
+                  }))}
                 />
+                {direccionErrors.envioLocalidad && (
+                  <small className="p-error">{direccionErrors.envioLocalidad}</small>
+                )}
               </div>
               <div className="field col-12 md:col-4">
-                <label className="font-bold">Dirección</label>
+                <label className="font-bold">Calle</label>
                 <InputText
-                  value={formData.envioDireccion}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, envioDireccion: e.target.value }))}
-                  placeholder="Calle y número"
+                  value={formData.envioCalle}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioCalle: e.target.value }))}
+                  placeholder="Ej: Mitre"
                 />
+                {direccionErrors.envioCalle && (
+                  <small className="p-error">{direccionErrors.envioCalle}</small>
+                )}
+              </div>
+              <div className="field col-12 md:col-4">
+                <label className="font-bold">Altura</label>
+                <InputText
+                  value={formData.envioNumero}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioNumero: e.target.value }))}
+                  placeholder="Ej: 123"
+                />
+                {direccionErrors.envioNumero && (
+                  <small className="p-error">{direccionErrors.envioNumero}</small>
+                )}
               </div>
               <div className="field col-12 md:col-4">
                 <label className="font-bold">Zona</label>
-                <InputText
+                <Dropdown
                   value={formData.envioZona}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, envioZona: e.target.value }))}
-                  placeholder="Ej: Zona sur"
+                  options={zonas}
+                  optionLabel="name"
+                  placeholder="Seleccione zona"
+                  filter
+                  onChange={(e) => setFormData((prev) => ({ ...prev, envioZona: e.value }))}
+                  disabled={!formData.envioLocalidad}
                 />
+                {direccionErrors.envioZona && (
+                  <small className="p-error">{direccionErrors.envioZona}</small>
+                )}
               </div>
             </div>
           </div>
@@ -356,7 +558,7 @@ const { clientes, fetchClientes } = useClienteStore();
                 <Dropdown
                   value={selectedProducto}
                   options={productos}
-                  onChange={(e) => setSelectedProducto(e.value)}
+                  onChange={(e) => { setSelectedProducto(e.value); setCantidadError(''); setCantidad(1); }}
                   optionLabel="name"
                   placeholder="Seleccione producto"
                   filter
@@ -365,11 +567,16 @@ const { clientes, fetchClientes } = useClienteStore();
               <div className="field col-12 md:col-3">
                 <InputNumber
                   value={cantidad}
-                  onValueChange={(e) => setCantidad(e.value)}
+                  onValueChange={(e) => { setCantidad(e.value); setCantidadError(''); }}
                   showButtons
-                  min={1}
+                  min={isUnitProduct(selectedProducto) ? 1 : 0.001}
+                  maxFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
+                  minFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
                   placeholder="Cantidad"
                 />
+                {cantidadError && (
+                  <small className="p-error">{cantidadError}</small>
+                )}
               </div>
               <div className="field col-12 md:col-3">
                 <Button
@@ -402,6 +609,11 @@ const { clientes, fetchClientes } = useClienteStore();
               style={{ width: '8%' }}
             />
           </DataTable>
+          {(!formData.items || formData.items.length === 0) && (
+            <small className="text-orange-500 block mt-2 font-medium">
+              ⚠️ Debes agregar al menos un producto para crear el pedido
+            </small>
+          )}
         </div>
       </div>
     </Dialog>

@@ -51,6 +51,7 @@ class PedidoService {
   }
 
   static async create(pedidoData) {
+    console.log('Creating pedido with data:', pedidoData);
     try {
       const response = await axios.post(`${PEDIDOS_ENDPOINT}/`, pedidoData);
       return { success: true, data: response.data, status: response.status };
