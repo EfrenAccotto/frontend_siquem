@@ -154,7 +154,6 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
     const footer = (
         <div className="flex justify-content-between align-items-center">
             <div className="text-xl font-bold">
-                Total: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(calcularTotal())}
             </div>
             <div className="flex gap-2">
                 <Button

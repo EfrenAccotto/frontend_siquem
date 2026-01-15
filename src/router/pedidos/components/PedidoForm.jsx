@@ -13,14 +13,26 @@ import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import UbicacionService from '@/router/ubicacion/services/UbicacionService';
 
-// Estados permitidos en el formulario (completed solo desde Generar Venta)
-const estadoOptions = [
+// Estados base permitidos en el formulario
+const estadoOptionsBase = [
   { label: 'Pendiente', value: 'pending' },
-  { label: 'Cancelado', value: 'cancelled' }
+  { label: 'Cancelado', value: 'cancelled' },
+  { label: 'Completado', value: 'completed' }
 ];
 
 const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
-const { clientes, fetchClientes } = useClienteStore();
+  const { clientes, fetchClientes } = useClienteStore();
+  
+  // Determinar opciones de estado basado en si es edición o creación
+  const getEstadoOptions = () => {
+    if (!pedido) {
+      // Modo creación: permitir todos los estados incluyendo completed
+      return estadoOptionsBase;
+    } else {
+      // Modo edición: no permitir cambiar a completed
+      return estadoOptionsBase.filter(option => option.value !== 'completed');
+    }
+  };
 
   const [formData, setFormData] = useState({
     cliente: null,
@@ -229,8 +241,8 @@ const { clientes, fetchClientes } = useClienteStore();
       return;
     }
 
-    // No permitir crear pedidos en estado completado desde este formulario
-    if (!pedido && formData.estado === 'completed') {
+    // Al editar, no permitir cambiar el estado a completed
+    if (pedido && formData.estado === 'completed') {
       return;
     }
 
@@ -423,17 +435,22 @@ const { clientes, fetchClientes } = useClienteStore();
         <div className="col-12 md:col-6">
           <div className="field">
             <label className="font-bold">Estado</label>
-            {formData.estado === 'completed' ? (
+            {pedido && formData.estado === 'completed' ? (
               <InputText value="Completado" readOnly />
             ) : (
               <Dropdown
                 value={formData.estado}
-                options={estadoOptions}
+                options={getEstadoOptions()}
                 optionLabel="label"
                 optionValue="value"
                 onChange={(e) => setFormData((prev) => ({ ...prev, estado: e.value }))}
                 placeholder="Seleccione estado"
               />
+            )}
+            {pedido && formData.estado === 'completed' && (
+              <small className="text-500 block mt-1">
+                Los pedidos completados no pueden editarse. 
+              </small>
             )}
           </div>
         </div>
