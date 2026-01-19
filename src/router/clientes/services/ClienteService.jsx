@@ -3,6 +3,7 @@ import axios from 'axios';
 // Asegura que no haya doble slash si la env var trae la barra final
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CLIENTES_ENDPOINT = `${BASE_URL}/customer`;
+const ZONES_BY_LOCALITY_ENDPOINT = `${BASE_URL}/zones/by-locality`;
 
 class ClienteService {
   static async getAll(params = {}) {
@@ -135,6 +136,28 @@ class ClienteService {
       return {
         success: false,
         error: error.response?.data?.message || `Error al eliminar cliente con ID: ${id}`,
+        status: error.response?.status || 500
+      };
+    }
+  }
+
+  static async getZones(localityId) {
+    try {
+      if (!localityId) {
+        return { success: true, data: [], status: 200 };
+      }
+      const response = await axios.get(`${ZONES_BY_LOCALITY_ENDPOINT}/${localityId}/`);
+      const data = response.data;
+      const list = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
+      return {
+        success: true,
+        data: list,
+        status: response.status
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Error al obtener zonas',
         status: error.response?.status || 500
       };
     }

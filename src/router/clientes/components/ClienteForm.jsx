@@ -5,6 +5,7 @@ import { Dropdown } from 'primereact/dropdown';
 import { AutoComplete } from 'primereact/autocomplete';
 import { useEffect, useState } from 'react';
 import UbicacionService from '../../ubicacion/services/UbicacionService';
+import ClienteService from '../services/ClienteService';
 
 const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const [formData, setFormData] = useState({
@@ -25,17 +26,17 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const [provincias, setProvincias] = useState([]);
   const [localidades, setLocalidades] = useState([]);
   const [localidadSuggestions, setLocalidadSuggestions] = useState([]);
-  const zonas = [
-    { label: 'Centro', value: 'Centro' },
-    { label: 'Banda Norte', value: 'Banda Norte' },
-    { label: 'Alberdi', value: 'Alberdi' },
-    { label: 'Las Higueras', value: 'Las Higueras' },
-    { label: 'Holmberg', value: 'Holmberg' }
-  ];
+  const [zonas, setZonas] = useState([]);
 
   const localityIdFromValue = (loc) => {
     if (!loc) return null;
-    if (typeof loc === 'number' || typeof loc === 'string') return loc;
+    if (typeof loc === 'string') {
+      const match = localidades.find(
+        (item) => (item.label || '').toLowerCase() === loc.toLowerCase()
+      );
+      return match?.value || match?.id || loc;
+    }
+    if (typeof loc === 'number') return loc;
     return loc.value || loc.id || loc.locality_id || null;
   };
 
@@ -51,6 +52,19 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
       value: l.id || l.value || l,
       province: l.province
     }));
+
+  const mapZonas = (items = []) =>
+    (items || []).map((z) => ({
+      label: z.name || z.label || z,
+      value: z.id || z.value || z,
+      locality: z.locality || z.locality_id || z.localidad || null
+    }));
+
+  const getLocalityIdFromZone = (zoneLocality) => {
+    if (!zoneLocality) return null;
+    if (typeof zoneLocality === 'number' || typeof zoneLocality === 'string') return zoneLocality;
+    return zoneLocality.id || zoneLocality.value || null;
+  };
 
   const loadProvincias = async () => {
     try {
@@ -73,6 +87,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
       ...prev,
       province: provinciaSeleccionada,
       locality: null,
+      zona: '',
       street: '',
       number: '',
       floor: '',
@@ -80,6 +95,7 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
     }));
     setLocalidades([]);
     setLocalidadSuggestions([]);
+    setZonas([]);
 
     if (provinciaSeleccionada) {
       try {
@@ -101,8 +117,16 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
   const handleLocalidadChange = async (localidadSeleccionada) => {
     setFormData((prev) => ({
       ...prev,
-      locality: localidadSeleccionada
+      locality: localidadSeleccionada,
+      zona: ''
     }));
+
+    const localityId = localityIdFromValue(localidadSeleccionada);
+    if (localityId) {
+      await loadZonas(localityId);
+    } else {
+      setZonas([]);
+    }
   };
 
   const handleLocalidadInputChange = (value) => {
@@ -118,6 +142,31 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
     setLocalidadSuggestions(filtered);
   };
 
+  const loadZonas = async (localityId) => {
+    try {
+      const response = await ClienteService.getZones(localityId);
+      if (response.success) {
+        const list = response.data || [];
+        const mapped = mapZonas(list);
+        const filtered = localityId
+          ? mapped.filter((z) => {
+              const zoneLocalityId = getLocalityIdFromZone(z.locality);
+              return !zoneLocalityId || zoneLocalityId === localityId;
+            })
+          : mapped;
+        setZonas(filtered);
+        return filtered;
+      }
+      console.error('Error loading zonas:', response.error);
+      setZonas([]);
+      return [];
+    } catch (error) {
+      console.error('Error loading zonas:', error);
+      setZonas([]);
+      return [];
+    }
+  };
+
   useEffect(() => {
     if (!visible) return;
 
@@ -125,12 +174,13 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
       await loadProvincias();
       const provinceId = cliente?.address?.locality?.province?.id || null;
       const localityId = cliente?.address?.locality?.id || null;
+      const zoneId = cliente?.zona?.id || cliente?.zona_id || cliente?.zona || '';
       const baseForm = {
         first_name: cliente?.first_name || '',
         last_name: cliente?.last_name || '',
         phone_number: cliente?.phone_number || '',
         dni: cliente?.dni || '',
-        zona: cliente?.zona || '',
+        zona: zoneId,
         province: provinceId,
         locality: localityId,
         street: cliente?.address?.street || '',
@@ -153,10 +203,23 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
             ...prev,
             locality: selectedLoc || localityId
           }));
+          if (localityId) {
+            const zones = await loadZonas(localityId);
+            const matchedZone = zones.find((z) =>
+              z.value === zoneId || z.id === zoneId || z.label === zoneId
+            );
+            if (matchedZone) {
+              setFormData((prev) => ({
+                ...prev,
+                zona: matchedZone.value
+              }));
+            }
+          }
         }
       } else {
         setLocalidades([]);
         setLocalidadSuggestions([]);
+        setZonas([]);
       }
     };
 
@@ -191,6 +254,10 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
       newErrors.dni = 'El DNI es requerido';
     } else if (formData.dni.length !== 8 || !/^\d+$/.test(formData.dni)) {
       newErrors.dni = 'El DNI debe tener 8 dígitos numéricos';
+    }
+
+    if (!formData.zona) {
+      newErrors.zona = 'La zona es requerida';
     }
 
     if (!formData.province) {
@@ -319,19 +386,6 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
 
           <div className="col-12 md:col-6">
             <div className="field">
-              <label className="font-bold">Zona</label>
-              <Dropdown
-                value={formData.zona}
-                options={zonas}
-                onChange={(e) => handleChange('zona', e.value)}
-                placeholder="Seleccione zona"
-                showClear
-              />
-            </div>
-          </div>
-
-          <div className="col-12 md:col-6">
-            <div className="field">
               <label htmlFor="dni" className="font-bold">
                 DNI *
               </label>
@@ -385,6 +439,24 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
               {errors.locality && (
                 <small className="p-error">{errors.locality}</small>
               )}
+            </div>
+          </div>
+
+          <div className="col-12 md:col-6">
+            <div className="field">
+              <label className="font-bold">Zona</label>
+              <Dropdown
+                value={formData.zona}
+                options={zonas}
+                optionLabel="label"
+                optionValue="value"
+                onChange={(e) => handleChange('zona', e.value)}
+                placeholder="Seleccione zona"
+                showClear
+                disabled={!formData.locality}
+                className={errors.zona ? 'p-invalid' : ''}
+              />
+              {errors.zona && <small className="p-error">{errors.zona}</small>}
             </div>
           </div>
 

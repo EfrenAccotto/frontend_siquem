@@ -4,11 +4,18 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import ClienteForm from './ClienteForm';
 import UbicacionService from '../../ubicacion/services/UbicacionService';
+import ClienteService from '../services/ClienteService';
 
 // Mock del servicio de ubicación
 jest.mock('../../ubicacion/services/UbicacionService', () => ({
   getProvincias: jest.fn(),
   getLocalidades: jest.fn(),
+}));
+jest.mock('../services/ClienteService', () => ({
+  __esModule: true,
+  default: {
+    getZones: jest.fn(),
+  }
 }));
 
 // Mock de PrimeReact components
@@ -108,11 +115,11 @@ describe('ClienteForm', () => {
   ];
 
   const zonas = [
-    { label: 'Centro', value: 'Centro' },
-    { label: 'Banda Norte', value: 'Banda Norte' },
-    { label: 'Alberdi', value: 'Alberdi' },
-    { label: 'Las Higueras', value: 'Las Higueras' },
-    { label: 'Holmberg', value: 'Holmberg' }
+    { id: 10, name: 'Centro', locality: 1 },
+    { id: 11, name: 'Banda Norte', locality: 1 },
+    { id: 12, name: 'Alberdi', locality: 2 },
+    { id: 13, name: 'Las Higueras', locality: 2 },
+    { id: 14, name: 'Holmberg', locality: 3 }
   ];
 
   beforeEach(() => {
@@ -124,6 +131,10 @@ describe('ClienteForm', () => {
     UbicacionService.getLocalidades.mockResolvedValue({
       success: true,
       data: mockLocalidades
+    });
+    ClienteService.getZones.mockResolvedValue({
+      success: true,
+      data: zonas
     });
   });
 
@@ -169,17 +180,28 @@ describe('ClienteForm', () => {
       expect(screen.getByTestId('telefono')).toBeInTheDocument();
     });
 
-    test('debe renderizar el dropdown de zonas con todas las opciones', async () => {
+    test('debe renderizar el dropdown de zonas luego de seleccionar localidad', async () => {
       await act(async () => {
         render(<ClienteForm {...mockProps} />);
       });
 
-      const zonaDropdown = screen.getByTestId('dropdown');
+      const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
+      await act(async () => {
+        fireEvent.change(provinciaDropdown, { target: { value: '1' } });
+      });
+
+      const localidadInput = screen.getByTestId('autocomplete');
+      await act(async () => {
+        fireEvent.change(localidadInput, { target: { value: 'Rio Cuarto' } });
+      });
+
+      const zonaDropdown = screen.getAllByTestId('dropdown')[1];
       expect(zonaDropdown).toBeInTheDocument();
 
-      // Verificar que todas las zonas están disponibles
-      zonas.forEach(zona => {
-        expect(screen.getByText(zona.label)).toBeInTheDocument();
+      // Verificar que las zonas relacionadas están disponibles
+      const zonasRelacionadas = zonas.filter((z) => z.locality === 1);
+      zonasRelacionadas.forEach((zona) => {
+        expect(screen.getByText(zona.name)).toBeInTheDocument();
       });
     });
   });
@@ -200,6 +222,7 @@ describe('ClienteForm', () => {
         expect(screen.getByText('El nombre es requerido')).toBeInTheDocument();
         expect(screen.getByText('El apellido es requerido')).toBeInTheDocument();
         expect(screen.getByText('El DNI es requerido')).toBeInTheDocument();
+        expect(screen.getByText('La zona es requerida')).toBeInTheDocument();
         expect(screen.getByText('La provincia es requerida')).toBeInTheDocument();
         expect(screen.getByText('La localidad es requerida')).toBeInTheDocument();
         expect(screen.getByText('La calle es requerida')).toBeInTheDocument();
@@ -251,19 +274,9 @@ describe('ClienteForm', () => {
 
     test.each([
       ['Centro', 'Rio Cuarto'],
-      ['Centro', 'Las Higueras'], 
-      ['Centro', 'Holmberg'],
       ['Banda Norte', 'Rio Cuarto'],
-      ['Banda Norte', 'Las Higueras'],
-      ['Banda Norte', 'Holmberg'],
-      ['Alberdi', 'Rio Cuarto'],
       ['Alberdi', 'Las Higueras'],
-      ['Alberdi', 'Holmberg'],
-      ['Las Higueras', 'Rio Cuarto'],
       ['Las Higueras', 'Las Higueras'],
-      ['Las Higueras', 'Holmberg'],
-      ['Holmberg', 'Rio Cuarto'],
-      ['Holmberg', 'Las Higueras'],
       ['Holmberg', 'Holmberg']
     ])('debe permitir seleccionar zona %s con localidad %s', async (zona, localidad) => {
       // Llenar campos requeridos
@@ -282,15 +295,8 @@ describe('ClienteForm', () => {
         fireEvent.change(numeroInput, { target: { value: '123' } });
       });
 
-      // Seleccionar zona
-      const dropdowns = screen.getAllByTestId('dropdown');
-      const zonaDropdown = dropdowns[0];
-      await act(async () => {
-        fireEvent.change(zonaDropdown, { target: { value: zona } });
-      });
-
       // Seleccionar provincia Córdoba
-      const provinciaDropdown = screen.getAllByTestId('dropdown')[1];
+      const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
       await act(async () => {
         fireEvent.change(provinciaDropdown, { target: { value: '1' } });
       });
@@ -305,6 +311,15 @@ describe('ClienteForm', () => {
         fireEvent.change(localidadInput, { target: { value: localidad } });
       });
 
+      // Seleccionar zona (según localidad)
+      const zonaMatch = zonas.find((z) => z.name === zona);
+      const zonaDropdown = screen.getAllByTestId('dropdown')[1];
+      if (zonaMatch) {
+        await act(async () => {
+          fireEvent.change(zonaDropdown, { target: { value: String(zonaMatch.id) } });
+        });
+      }
+
       // Enviar formulario
       const submitButton = screen.getByText('Guardar');
       await act(async () => {
@@ -317,13 +332,13 @@ describe('ClienteForm', () => {
           last_name: 'Pérez',
           phone_number: '',
           dni: '12345678',
-          zona: zona,
+          zona: zonas.find((z) => z.name === zona)?.id,
           address: {
             street: 'Calle Test',
             number: '123',
             floor: '',
             apartment: '',
-            locality_id: localidad
+            locality_id: mockLocalidades.find((loc) => loc.name === localidad)?.id
           }
         });
       });
@@ -346,7 +361,7 @@ describe('ClienteForm', () => {
         render(<ClienteForm {...mockProps} />);
       });
 
-      const provinciaDropdown = screen.getAllByTestId('dropdown')[1];
+      const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
       
       await act(async () => {
         fireEvent.change(provinciaDropdown, { target: { value: '1' } });
@@ -388,7 +403,7 @@ describe('ClienteForm', () => {
         render(<ClienteForm {...mockProps} />);
       });
 
-      const provinciaDropdown = screen.getAllByTestId('dropdown')[1];
+      const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
       
       await act(async () => {
         fireEvent.change(provinciaDropdown, { target: { value: '1' } });
@@ -492,7 +507,7 @@ describe('ClienteForm', () => {
         render(<ClienteForm {...mockProps} />);
       });
 
-      const provinciaDropdown = screen.getAllByTestId('dropdown')[1];
+      const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
       
       await act(async () => {
         fireEvent.change(provinciaDropdown, { target: { value: '1' } });
@@ -608,13 +623,9 @@ describe('ClienteForm', () => {
         fireEvent.change(screen.getByTestId('apellido'), { target: { value: 'Rodríguez' } });
         fireEvent.change(screen.getByTestId('telefono'), { target: { value: '+54 358 1234567' } });
         fireEvent.change(screen.getByTestId('dni'), { target: { value: '11223344' } });
-        
-        // Seleccionar zona
-        const dropdowns = screen.getAllByTestId('dropdown');
-        fireEvent.change(dropdowns[0], { target: { value: 'Las Higueras' } });
-        
+
         // Seleccionar provincia
-        fireEvent.change(screen.getAllByTestId('dropdown')[1], { target: { value: '1' } });
+        fireEvent.change(screen.getAllByTestId('dropdown')[0], { target: { value: '1' } });
       });
 
       await waitFor(() => {
@@ -624,6 +635,12 @@ describe('ClienteForm', () => {
       await act(async () => {
         // Seleccionar localidad
         fireEvent.change(screen.getByTestId('autocomplete'), { target: { value: 'Las Higueras' } });
+
+        // Seleccionar zona
+        const zonaSeleccionada = zonas.find((z) => z.name === 'Las Higueras');
+        if (zonaSeleccionada) {
+          fireEvent.change(screen.getAllByTestId('dropdown')[1], { target: { value: String(zonaSeleccionada.id) } });
+        }
         
         // Dirección
         fireEvent.change(screen.getByPlaceholderText('Ej: Calle Principal'), { target: { value: 'Rivadavia' } });
@@ -643,13 +660,13 @@ describe('ClienteForm', () => {
           last_name: 'Rodríguez',
           phone_number: '+54 358 1234567',
           dni: '11223344',
-          zona: 'Las Higueras',
+          zona: zonas.find((z) => z.name === 'Las Higueras')?.id,
           address: {
             street: 'Rivadavia',
             number: '789',
             floor: '1',
             apartment: 'B',
-            locality_id: 'Las Higueras'
+            locality_id: mockLocalidades.find((loc) => loc.name === 'Las Higueras')?.id
           }
         });
       });

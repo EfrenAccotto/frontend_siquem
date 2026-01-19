@@ -3,8 +3,15 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import '@testing-library/jest-dom';
 import ClienteForm from './ClienteForm';
 import UbicacionService from '../../ubicacion/services/UbicacionService';
+import ClienteService from '../services/ClienteService';
 
 jest.mock('../../ubicacion/services/UbicacionService');
+jest.mock('../services/ClienteService', () => ({
+  __esModule: true,
+  default: {
+    getZones: jest.fn()
+  }
+}));
 
 // Mock de PrimeReact components (mismos que en el archivo principal)
 jest.mock('primereact/dialog', () => ({
@@ -79,6 +86,13 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
     { id: 2, name: 'Las Higueras', province: 1 },
     { id: 3, name: 'Holmberg', province: 1 }
   ];
+  const mockZonas = [
+    { id: 10, name: 'Centro', locality: 1 },
+    { id: 11, name: 'Banda Norte', locality: 1 },
+    { id: 12, name: 'Alberdi', locality: 2 },
+    { id: 13, name: 'Las Higueras', locality: 2 },
+    { id: 14, name: 'Holmberg', locality: 3 }
+  ];
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -89,6 +103,10 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
     UbicacionService.getLocalidades.mockResolvedValue({
       success: true,
       data: mockLocalidades
+    });
+    ClienteService.getZones.mockResolvedValue({
+      success: true,
+      data: mockZonas
     });
   });
 
@@ -103,7 +121,7 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
   };
 
   const selectProvince = async () => {
-    const provinciaDropdown = screen.getAllByTestId('dropdown')[1];
+    const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
     await act(async () => {
       fireEvent.change(provinciaDropdown, { target: { value: '1' } });
     });
@@ -112,31 +130,30 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
     });
   };
 
+  const selectLocalidad = async (localidad) => {
+    const localityMatch = mockLocalidades.find((loc) => loc.name === localidad);
+    const localidadInput = screen.getByTestId('autocomplete');
+    await act(async () => {
+      fireEvent.change(localidadInput, { target: { value: localidad } });
+    });
+    await waitFor(() => {
+      expect(ClienteService.getZones).toHaveBeenCalledWith(localityMatch?.id);
+    });
+  };
+
+  const selectZona = async (zonaId) => {
+    const zonaDropdown = screen.getAllByTestId('dropdown')[1];
+    await act(async () => {
+      fireEvent.change(zonaDropdown, { target: { value: String(zonaId) } });
+    });
+  };
+
   describe('Matriz de Pruebas: Zonas × Localidades', () => {
     const testCases = [
-      // Centro con todas las localidades
       { zona: 'Centro', localidad: 'Rio Cuarto', expectedLocalityCall: true },
-      { zona: 'Centro', localidad: 'Las Higueras', expectedLocalityCall: true },
-      { zona: 'Centro', localidad: 'Holmberg', expectedLocalityCall: true },
-      
-      // Banda Norte con todas las localidades
       { zona: 'Banda Norte', localidad: 'Rio Cuarto', expectedLocalityCall: true },
-      { zona: 'Banda Norte', localidad: 'Las Higueras', expectedLocalityCall: true },
-      { zona: 'Banda Norte', localidad: 'Holmberg', expectedLocalityCall: true },
-      
-      // Alberdi con todas las localidades
-      { zona: 'Alberdi', localidad: 'Rio Cuarto', expectedLocalityCall: true },
       { zona: 'Alberdi', localidad: 'Las Higueras', expectedLocalityCall: true },
-      { zona: 'Alberdi', localidad: 'Holmberg', expectedLocalityCall: true },
-      
-      // Las Higueras con todas las localidades
-      { zona: 'Las Higueras', localidad: 'Rio Cuarto', expectedLocalityCall: true },
       { zona: 'Las Higueras', localidad: 'Las Higueras', expectedLocalityCall: true },
-      { zona: 'Las Higueras', localidad: 'Holmberg', expectedLocalityCall: true },
-      
-      // Holmberg con todas las localidades
-      { zona: 'Holmberg', localidad: 'Rio Cuarto', expectedLocalityCall: true },
-      { zona: 'Holmberg', localidad: 'Las Higueras', expectedLocalityCall: true },
       { zona: 'Holmberg', localidad: 'Holmberg', expectedLocalityCall: true },
     ];
 
@@ -149,20 +166,17 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
 
         await fillBasicForm();
 
-        // Seleccionar zona
-        const zonaDropdown = screen.getAllByTestId('dropdown')[0];
-        await act(async () => {
-          fireEvent.change(zonaDropdown, { target: { value: zona } });
-        });
-
         // Seleccionar provincia (esto carga las localidades)
         await selectProvince();
 
         // Seleccionar localidad
-        const localidadInput = screen.getByTestId('autocomplete');
-        await act(async () => {
-          fireEvent.change(localidadInput, { target: { value: localidad } });
-        });
+        await selectLocalidad(localidad);
+
+        // Seleccionar zona (depende de localidad)
+        const zoneOption = mockZonas.find((z) => z.name === zona);
+        if (zoneOption) {
+          await selectZona(zoneOption.id);
+        }
 
         // Verificar que la localidad esté habilitada después de seleccionar provincia
         expect(localidadInput).not.toBeDisabled();
@@ -182,9 +196,9 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
         await waitFor(() => {
           expect(mockProps.onSave).toHaveBeenCalledWith(
             expect.objectContaining({
-              zona: zona,
+              zona: mockZonas.find((z) => z.name === zona)?.id,
               address: expect.objectContaining({
-                locality_id: localidad // Será el valor de la localidad, no null
+                locality_id: mockLocalidades.find((loc) => loc.name === localidad)?.id
               })
             })
           );
@@ -202,17 +216,14 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
       await fillBasicForm();
 
       // Caso especial: Zona "Las Higueras" con Localidad "Las Higueras"
-      const zonaDropdown = screen.getAllByTestId('dropdown')[0];
-      await act(async () => {
-        fireEvent.change(zonaDropdown, { target: { value: 'Las Higueras' } });
-      });
-
       await selectProvince();
 
-      const localidadInput = screen.getByTestId('autocomplete');
-      await act(async () => {
-        fireEvent.change(localidadInput, { target: { value: 'Las Higueras' } });
-      });
+      await selectLocalidad('Las Higueras');
+
+      const zonaSeleccionada = mockZonas.find((z) => z.name === 'Las Higueras');
+      if (zonaSeleccionada) {
+        await selectZona(zonaSeleccionada.id);
+      }
 
       const submitButton = screen.getByText('Guardar');
       await act(async () => {
@@ -222,44 +233,27 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
       await waitFor(() => {
         expect(mockProps.onSave).toHaveBeenCalledWith(
           expect.objectContaining({
-            zona: 'Las Higueras'
+            zona: mockZonas.find((z) => z.name === 'Las Higueras')?.id
           })
         );
       });
     });
 
-    test('debe permitir zona sin localidad relacionada geográficamente', async () => {
+    test('debe filtrar zonas por localidad seleccionada', async () => {
       await act(async () => {
         render(<ClienteForm {...mockProps} />);
       });
 
       await fillBasicForm();
 
-      // Zona "Centro" con localidad "Holmberg" (diferentes áreas)
-      const zonaDropdown = screen.getAllByTestId('dropdown')[0];
-      await act(async () => {
-        fireEvent.change(zonaDropdown, { target: { value: 'Centro' } });
-      });
-
       await selectProvince();
 
-      const localidadInput = screen.getByTestId('autocomplete');
-      await act(async () => {
-        fireEvent.change(localidadInput, { target: { value: 'Holmberg' } });
-      });
+      await selectLocalidad('Holmberg');
 
-      const submitButton = screen.getByText('Guardar');
-      await act(async () => {
-        fireEvent.click(submitButton);
-      });
-
-      await waitFor(() => {
-        expect(mockProps.onSave).toHaveBeenCalledWith(
-          expect.objectContaining({
-            zona: 'Centro'
-          })
-        );
-      });
+      const zonaDropdown = screen.getAllByTestId('dropdown')[1];
+      expect(zonaDropdown).toBeInTheDocument();
+      expect(screen.getByText('Holmberg')).toBeInTheDocument();
+      expect(screen.queryByText('Centro')).not.toBeInTheDocument();
     });
   });
 
@@ -372,7 +366,7 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
       });
 
       // Intentar seleccionar provincia
-      const provinciaDropdown = screen.getAllByTestId('dropdown')[1];
+      const provinciaDropdown = screen.getAllByTestId('dropdown')[0];
       await act(async () => {
         fireEvent.change(provinciaDropdown, { target: { value: '1' } });
       });

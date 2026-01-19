@@ -53,6 +53,9 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const [localidades, setLocalidades] = useState([]);
   const [zonas, setZonas] = useState([]);
   const [direccionErrors, setDireccionErrors] = useState({});
+  const isPedidoCompleted = ['completed', 'completado'].includes(
+    String(pedido?.state || pedido?.estado || formData?.estado || '').toLowerCase()
+  );
 
   const resolveClienteValue = (clienteRaw, clientesList = []) => {
     if (!clienteRaw) return null;
@@ -324,6 +327,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   };
 
   const handleAddItem = () => {
+    if (isPedidoCompleted) return;
     console.log('=== DEBUGGING ADD ITEM ===');
     console.log('selectedProducto:', selectedProducto);
     console.log('cantidad:', cantidad);
@@ -364,6 +368,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   };
 
   const handleRemoveItem = (rowData) => {
+    if (isPedidoCompleted) return;
     setFormData((prev) => ({
       ...prev,
       items: (prev.items || []).filter((it) => it.id !== rowData.id)
@@ -553,6 +558,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
         <div className="col-12">
           <div className="p-3 border-1 surface-border border-round surface-ground">
             <h4 className="m-0 mb-3">Agregar Producto</h4>
+            {isPedidoCompleted && (
+              <small className="text-500 block mb-2">
+                Pedido completado: no se pueden modificar cantidades ni agregar/quitar productos.
+              </small>
+            )}
             <div className="formgrid grid">
               <div className="field col-12 md:col-6">
                 <Dropdown
@@ -562,6 +572,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                   optionLabel="name"
                   placeholder="Seleccione producto"
                   filter
+                  disabled={isPedidoCompleted}
                 />
               </div>
               <div className="field col-12 md:col-3">
@@ -573,6 +584,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                   maxFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
                   minFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
                   placeholder="Cantidad"
+                  disabled={isPedidoCompleted}
                 />
                 {cantidadError && (
                   <small className="p-error">{cantidadError}</small>
@@ -583,7 +595,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                   label="Agregar"
                   icon="pi pi-plus"
                   onClick={handleAddItem}
-                  disabled={!selectedProducto}
+                  disabled={!selectedProducto || isPedidoCompleted}
                 />
               </div>
             </div>
@@ -604,6 +616,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                   icon="pi pi-trash"
                   className="p-button-danger p-button-text p-button-sm"
                   onClick={() => handleRemoveItem(rowData)}
+                  disabled={isPedidoCompleted}
                 />
               )}
               style={{ width: '8%' }}

@@ -22,7 +22,7 @@ const Inicio = () => {
           />
         </div>
         <div className="flex justify-content-center p-3">
-          © 2025 – PampaCode · Todos los derechos reservados.
+          © 2026 – PampaCode · Todos los derechos reservados.
         </div>
       </Card>
     </div>

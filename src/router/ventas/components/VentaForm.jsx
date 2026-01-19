@@ -65,6 +65,9 @@ const buildItemsFromPedido = (pedidoData, productos = []) => {
 
 const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = null }) => {
   const { clientes, fetchClientes } = useClienteStore();
+  const isVentaCompleted = ['completed', 'completado'].includes(
+    String(venta?.state || venta?.estado || venta?.status || '').toLowerCase()
+  );
   const [productosDisponibles, setProductosDisponibles] = useState([]);
   const [pedidosDisponibles, setPedidosDisponibles] = useState([]);
 
@@ -296,6 +299,7 @@ const loadPedidos = async () => {
   };
 
   const handleAddItem = () => {
+    if (isVentaCompleted) return;
     if (!selectedProducto || (cantidad || 0) <= 0) return;
 
     const price = selectedProducto.price ?? selectedProducto.precio ?? 0;
@@ -323,6 +327,7 @@ const loadPedidos = async () => {
   };
 
   const handleRemoveItem = (rowData) => {
+    if (isVentaCompleted) return;
     setFormData(prev => {
       const newItems = prev.items.filter(item => item.id !== rowData.id);
       const newTotal = recalcTotal(newItems);
@@ -502,6 +507,11 @@ const loadPedidos = async () => {
         <div className="col-12">
           <div className="p-3 border-1 surface-border border-round surface-ground">
             <h4 className="m-0 mb-3">Agregar Producto</h4>
+            {isVentaCompleted && (
+              <small className="text-500 block mb-2">
+                Venta completada: no se pueden modificar cantidades ni agregar/quitar productos.
+              </small>
+            )}
             <div className="formgrid grid">
               <div className="field col-12 md:col-6">
                 <Dropdown
@@ -511,6 +521,7 @@ const loadPedidos = async () => {
                   optionLabel="name"
                   placeholder="Seleccione producto"
                   filter
+                  disabled={isVentaCompleted}
                 />
               </div>
               <div className="field col-12 md:col-3">
@@ -520,6 +531,7 @@ const loadPedidos = async () => {
                   showButtons
                   min={1}
                   placeholder="Cantidad"
+                  disabled={isVentaCompleted}
                 />
               </div>
               <div className="field col-12 md:col-3">
@@ -527,7 +539,7 @@ const loadPedidos = async () => {
                   label="Agregar"
                   icon="pi pi-plus"
                   onClick={handleAddItem}
-                  disabled={!selectedProducto}
+                  disabled={!selectedProducto || isVentaCompleted}
                 />
               </div>
             </div>
@@ -553,6 +565,7 @@ const loadPedidos = async () => {
                   icon="pi pi-trash"
                   className="p-button-danger p-button-text p-button-sm"
                   onClick={() => handleRemoveItem(rowData)}
+                  disabled={isVentaCompleted}
                 />
               )}
               style={{ width: '5%' }}
