@@ -60,6 +60,49 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
       locality: z.locality || z.locality_id || z.localidad || null
     }));
 
+  const normalizeId = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const num = Number(value);
+    return Number.isNaN(num) ? null : num;
+  };
+
+  const isSameId = (a, b) => {
+    const na = normalizeId(a);
+    const nb = normalizeId(b);
+    if (na !== null && nb !== null) return na === nb;
+    return String(a) === String(b);
+  };
+
+  const getZoneFromCliente = (clienteData) => {
+    if (!clienteData) return { zoneId: null, zoneName: null };
+    const zoneObj =
+      clienteData.zona_info ||
+      clienteData.zona ||
+      clienteData.zone ||
+      clienteData.address?.zona ||
+      clienteData.address?.zone ||
+      null;
+    const zoneId =
+      clienteData.zona_info?.id ||
+      clienteData.zona_id ||
+      clienteData.zone_id ||
+      clienteData.address?.zona_id ||
+      clienteData.address?.zone_id ||
+      zoneObj?.id ||
+      zoneObj?.value ||
+      null;
+    const zoneName =
+      clienteData.zona_info?.name ||
+      clienteData.zona_name ||
+      clienteData.zone_name ||
+      clienteData.address?.zona_name ||
+      clienteData.address?.zone_name ||
+      zoneObj?.name ||
+      zoneObj?.label ||
+      (typeof zoneObj === 'string' ? zoneObj : null);
+    return { zoneId, zoneName };
+  };
+
   const getLocalityIdFromZone = (zoneLocality) => {
     if (!zoneLocality) return null;
     if (typeof zoneLocality === 'number' || typeof zoneLocality === 'string') return zoneLocality;
@@ -174,13 +217,13 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
       await loadProvincias();
       const provinceId = cliente?.address?.locality?.province?.id || null;
       const localityId = cliente?.address?.locality?.id || null;
-      const zoneId = cliente?.zona?.id || cliente?.zona_id || cliente?.zona || '';
+      const { zoneId, zoneName } = getZoneFromCliente(cliente);
       const baseForm = {
         first_name: cliente?.first_name || '',
         last_name: cliente?.last_name || '',
         phone_number: cliente?.phone_number || '',
         dni: cliente?.dni || '',
-        zona: zoneId,
+        zona: zoneId ?? zoneName ?? '',
         province: provinceId,
         locality: localityId,
         street: cliente?.address?.street || '',
@@ -206,7 +249,8 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
           if (localityId) {
             const zones = await loadZonas(localityId);
             const matchedZone = zones.find((z) =>
-              z.value === zoneId || z.id === zoneId || z.label === zoneId
+              (zoneId != null && isSameId(z.value ?? z.id, zoneId)) ||
+              (zoneName && String(z.label || '').toLowerCase() === String(zoneName).toLowerCase())
             );
             if (matchedZone) {
               setFormData((prev) => ({
