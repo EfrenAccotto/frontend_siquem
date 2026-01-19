@@ -65,9 +65,7 @@ const buildItemsFromPedido = (pedidoData, productos = []) => {
 
 const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = null }) => {
   const { clientes, fetchClientes } = useClienteStore();
-  const isVentaCompleted = ['completed', 'completado'].includes(
-    String(venta?.state || venta?.estado || venta?.status || '').toLowerCase()
-  );
+  const isVentaCompleted = true;
   const [productosDisponibles, setProductosDisponibles] = useState([]);
   const [pedidosDisponibles, setPedidosDisponibles] = useState([]);
 

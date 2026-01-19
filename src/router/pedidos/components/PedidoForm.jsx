@@ -53,7 +53,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const [localidades, setLocalidades] = useState([]);
   const [zonas, setZonas] = useState([]);
   const [direccionErrors, setDireccionErrors] = useState({});
-  const isPedidoCompleted = ['completed', 'completado'].includes(
+  const isPedidoCompleted = !!pedido && ['completed', 'completado'].includes(
     String(pedido?.state || pedido?.estado || formData?.estado || '').toLowerCase()
   );
 
