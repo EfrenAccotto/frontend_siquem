@@ -3,6 +3,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { ProgressSpinner } from 'primereact/progressspinner';
+import { formatQuantityFromSource } from '@/utils/unitParser';
 
 const formatAddress = (addr) => {
   if (!addr) return '-';
@@ -41,27 +42,6 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
   const formatCurrency = (value) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
-  const getStockUnit = (rowData) =>
-    rowData?.producto?.stock_unit ||
-    rowData?.product?.stock_unit ||
-    rowData?.product_data?.stock_unit ||
-    rowData?.product_stock_unit ||
-    rowData?.stock_unit ||
-    'unit';
-
-  const formatCantidadConUnidad = (qty, stockUnit) => {
-    const num = Number(qty);
-    if (!isFinite(num)) return '-';
-    if (stockUnit === 'kg') {
-      const formatted = new Intl.NumberFormat('es-AR', {
-        minimumFractionDigits: 3,
-        maximumFractionDigits: 3
-      }).format(num);
-      return `${formatted} kg`;
-    }
-    return `${Math.trunc(num)} u`;
-  };
-
   const productoTemplate = (rowData) =>
     rowData.producto?.name ||
     rowData.product?.name ||
@@ -70,7 +50,7 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
 
   const cantidadTemplate = (rowData) => {
     const qty = rowData.cantidad ?? rowData.quantity ?? 1;
-    return formatCantidadConUnidad(qty, getStockUnit(rowData));
+    return formatQuantityFromSource(qty, rowData);
   };
 
   const precioTemplate = (rowData) => {

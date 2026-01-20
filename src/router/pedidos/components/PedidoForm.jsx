@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import UbicacionService from '@/router/ubicacion/services/UbicacionService';
+import { formatQuantityFromSource } from '@/utils/unitParser';
 
 // Estados base permitidos en el formulario
 const estadoOptionsBase = [
@@ -608,7 +609,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
               header="Producto"
               body={(rowData) => rowData.producto?.name || rowData.producto?.nombre || `ID ${rowData.producto?.id || rowData.producto}`}
             />
-            <Column field="cantidad" header="Cant." style={{ width: '12%' }} />
+            <Column
+              header="Cant."
+              body={(rowData) => formatQuantityFromSource(rowData.cantidad ?? rowData.quantity ?? 1, rowData)}
+              style={{ width: '12%' }}
+            />
             <Column
               header=""
               body={(rowData) => (

@@ -5,6 +5,7 @@ import { Button } from 'primereact/button';
 import { useState, useEffect } from 'react';
 import VentaService from '../services/VentaService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
+import { formatQuantityFromSource } from '@/utils/unitParser';
 
 const DetalleVentaDialog = ({ visible, venta, onHide }) => {
     const [detalles, setDetalles] = useState([]);
@@ -168,26 +169,6 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
         return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.subtotal || 0);
     };
 
-    const getStockUnit = (rowData) =>
-        rowData?.producto?.stock_unit ||
-        rowData?.product?.stock_unit ||
-        rowData?.product_data?.stock_unit ||
-        rowData?.stock_unit ||
-        'unit';
-
-    const formatCantidadConUnidad = (qty, stockUnit) => {
-        const num = Number(qty);
-        if (!isFinite(num)) return '-';
-        if (stockUnit === 'kg') {
-            const formatted = new Intl.NumberFormat('es-AR', {
-                minimumFractionDigits: 3,
-                maximumFractionDigits: 3
-            }).format(num);
-            return `${formatted} kg`;
-        }
-        return `${Math.trunc(num)} u`;
-    };
-
     const calcularTotal = () => {
         return detalles.reduce((sum, item) => sum + (item.subtotal || 0), 0);
     };
@@ -256,7 +237,7 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
                     />
                     <Column
                         header="Cantidad"
-                        body={(rowData) => formatCantidadConUnidad(rowData.cantidad, getStockUnit(rowData))}
+                        body={(rowData) => formatQuantityFromSource(rowData.cantidad, rowData)}
                         style={{ width: '15%' }}
                     />
                     <Column
