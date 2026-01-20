@@ -1,0 +1,93 @@
+/* Global: quitar padding y limitar el alto de las vistas a la altura del viewport (100vh)
+	 - Se asegura que el contenedor raíz ocupe 100vh
+	 - `main` tendrá scroll interno cuando su contenido sobrepase 100vh
+	 - Se eliminan paddings comunes (utilidades .p-*, .px-*, .py-*) para que la altura calcule sobre 100vh
+		Si esto afecta elementos que deben mantener espacio (ej. Navbar), podemos refinar la regla
+*/
+
+/* Box sizing global */
+*, *::before, *::after {
+	box-sizing: border-box;
+}
+
+/* Raíz sin margen y con altura limitada. Definimos la variable --navbar-height
+   para que `main` pueda restarla y no quede oculto por la barra superior. */
+:root {
+  --navbar-height: 5.5rem; /* py-3 (1.5rem) + contenido text-xl + text-sm (~4rem) */
+}
+
+.p-menubar-button {
+  display: none !important; /* Oculta el menú hamburguesa automático del Menubar */
+}
+
+html, body, #root {
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Main: ocupando el alto restante teniendo en cuenta la altura del navbar.
+   De esta forma el contenido no quedará oculto por la barra superior. */
+main {
+  height: calc(100vh - var(--navbar-height));
+  max-height: calc(100vh - var(--navbar-height));
+  overflow: hidden;
+  /* No forzamos padding aquí: los componentes internos (p-4, etc.) controlan el espaciado */
+}
+
+/* Mantener compatibilidad con utilidades de altura si se usan (refuerzo): */
+.h-screen, .min-h-screen {
+	height: 100vh;
+	max-height: 100vh;
+}
+
+/* Full height helper: ocupa el 100% del contenedor padre (usado por vistas dentro de main) */
+.h-full {
+  height: 100%;
+}
+
+/* ============================================================================
+   DARK THEME STYLES
+   ============================================================================ */
+
+/* Transiciones suaves para el cambio de tema */
+body, 
+.p-menubar,
+.p-card,
+.p-datatable,
+.p-panel {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Estilos para el tema oscuro */
+body.dark-theme {
+  background-color: #1e1e2e;
+  color: #e0e0e0;
+}
+
+/* Navbar en tema oscuro */
+body.dark-theme .p-menubar {
+  background-color: rgba(30, 30, 46, 0.95) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Cards en tema oscuro */
+body.dark-theme .p-card {
+  background-color: #2a2a3e;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* DataTable en tema oscuro */
+body.dark-theme .p-datatable {
+  background-color: #2a2a3e;
+}
+
+body.dark-theme .p-datatable .p-datatable-header {
+  background-color: #242436;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+

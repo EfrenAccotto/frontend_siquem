@@ -1,0 +1,54 @@
+# === React + Vite ===
+
+# Dependencias
+node_modules/
+
+# Build de producción
+dist/
+build/
+
+# Archivos de entorno
+.env
+.env.*
+!.env.example
+
+# Archivos de log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+bun.lockb
+
+# Archivos del editor
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos temporales
+*.local
+*.tmp
+*.temp
+*.swp
+*.swo
+
+# Archivos de cobertura de pruebas
+coverage/
+*.lcov
+
+# Archivos de lock opcionales
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Archivos de configuración locales
+vite.config.local.*
+vite-env.d.ts
+
+# Configuración de despliegue o CI
+.vercel/
+.netlify/

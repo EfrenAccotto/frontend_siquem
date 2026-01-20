@@ -1,0 +1,33 @@
+/* Layout específico para MainLayout */
+.main-layout-container {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+}
+
+.main-layout-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+}
+
+.main-layout-navbar {
+  flex-shrink: 0;
+  height: auto;
+}
+
+.main-layout-main {
+  flex: 1;
+  overflow: hidden;
+  padding: 1rem;
+  height: calc(100vh - var(--navbar-height));
+  box-sizing: border-box;
+}
+
+/* Asegurar que todas las vistas hijas usen la altura completa disponible */
+.main-layout-main > * {
+  height: 100%;
+  overflow: hidden;
+}

@@ -1,0 +1,60 @@
+/* Contenedor principal de inicio */
+.inicio-container {
+  height: 100%; /* Usa toda la altura disponible del contenedor padre */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+/* Card de bienvenida */
+.inicio-card {
+  max-width: 800px;
+  width: 100%;
+  padding: 2rem;
+  max-height: 90%; /* Previene desbordamiento */
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* Imagen responsive sin overflow */
+.inicio-image {
+  width: 100%;
+  max-width: 500px;
+  height: auto;
+  object-fit: contain;
+  max-height: 300px; /* Limita altura máxima */
+}
+
+/* Media queries para diferentes tamaños de pantalla */
+@media (max-width: 768px) {
+  .inicio-container {
+    padding: 0.5rem;
+  }
+  
+  .inicio-card {
+    padding: 1.5rem;
+    max-height: 95%;
+  }
+  
+  .inicio-image {
+    max-width: 300px;
+    max-height: 200px;
+  }
+}
+
+@media (max-width: 480px) {
+  .inicio-container {
+    padding: 0.25rem;
+  }
+  
+  .inicio-card {
+    padding: 1rem;
+  }
+  
+  .inicio-image {
+    max-height: 150px;
+  }
+}
