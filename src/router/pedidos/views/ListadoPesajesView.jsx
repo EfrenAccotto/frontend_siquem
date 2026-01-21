@@ -280,7 +280,7 @@ const ListadoPesajesView = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 font-primary" style={{ paddingBottom: '10rem' }}>
+        <div className="min-h-screen bg-gray-50 font-primary">
             <Toast ref={toast} />
 
             {/* Header Tipo App Mobile/Tablet */}
@@ -340,6 +340,9 @@ const ListadoPesajesView = () => {
                     </div>
                 ))}
             </div>
+
+            {/* Espaciador para evitar que el footer fijo tape el contenido */}
+            <div style={{ height: '8rem' }}></div>
 
             <div className="fixed bottom-0 left-0 w-full p-3 bg-white border-top-1 surface-border shadow-8 z-5 flex justify-content-end">
                 <Button
