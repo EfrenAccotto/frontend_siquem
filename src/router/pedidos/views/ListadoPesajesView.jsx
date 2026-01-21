@@ -10,11 +10,14 @@ import { Column } from 'primereact/column';
 import { Toast } from 'primereact/toast';
 import { Message } from 'primereact/message';
 import { parseQuantityValue } from '@/utils/unitParser';
+import { useTheme } from '@/context/ThemeContext';
 
 const ListadoPesajesView = () => {
     const [searchParams] = useSearchParams();
     const uuidParam = searchParams.get('uuid'); // Nuevo método
     const dataParam = searchParams.get('data'); // Legacy método (si se desea mantener o quitar)
+
+    const { setTheme: setThemeMode, isDark } = useTheme();
 
     const [pedidos, setPedidos] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -24,6 +27,12 @@ const ListadoPesajesView = () => {
     const [filtersInfo, setFiltersInfo] = useState({ fechaDesde: null, fechaHasta: null, estado: null });
     const [feedback, setFeedback] = useState({ visible: false, status: 'success', message: '' });
     const toast = useRef(null);
+
+    useEffect(() => {
+        if (isDark) {
+            setThemeMode('light');
+        }
+    }, [isDark, setThemeMode]);
 
     const triggerFeedback = (status, message) => {
         const fallbackMessage = status === 'success'
