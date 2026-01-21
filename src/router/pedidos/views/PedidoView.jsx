@@ -826,7 +826,7 @@ const PedidoView = () => {
       >
         <div className="flex flex-column gap-3">
           <p className="m-0 text-color-secondary">
-            Enlace temporal válido por 2 horas.
+            Enlace temporal válido por 1 dia.
           </p>
           <div className="p-inputgroup">
             <input
