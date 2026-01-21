@@ -3,7 +3,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { ProgressSpinner } from 'primereact/progressspinner';
-import { formatQuantityFromSource } from '@/utils/unitParser';
+import { formatQuantityFromSource, extractStockUnit } from '@/utils/unitParser';
 
 const formatAddress = (addr) => {
   if (!addr) return '-';
@@ -22,14 +22,30 @@ const STATUS_MAP = {
   cancelled: 'Cancelado'
 };
 
+const normalizeDetalleItem = (item) => {
+  const unit = extractStockUnit(item);
+  const ensureUnitOnProduct = (prod) => {
+    if (!prod) return null;
+    return prod.stock_unit || prod.stockUnit ? prod : { ...prod, stock_unit: unit };
+  };
+
+  return {
+    ...item,
+    stock_unit: unit,
+    product: ensureUnitOnProduct(item.product),
+    producto: ensureUnitOnProduct(item.producto)
+  };
+};
+
 const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
-  const detalles = Array.isArray(pedido?.detalles)
+  const detallesRaw = Array.isArray(pedido?.detalles)
     ? pedido.detalles
     : Array.isArray(pedido?.detail)
       ? pedido.detail
       : Array.isArray(pedido?.items)
         ? pedido.items
         : [];
+  const detalles = detallesRaw.map(normalizeDetalleItem);
 
   const clienteNombre = `${pedido?.customer?.first_name || pedido?.cliente?.first_name || ''} ${pedido?.customer?.last_name || pedido?.cliente?.last_name || ''}`.trim() || '-';
   const direccionEnvio = pedido?.shipping_address_str

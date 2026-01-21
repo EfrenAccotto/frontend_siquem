@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import VentaService from '../services/VentaService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
 import { formatQuantityFromSource } from '@/utils/unitParser';
+import { formatPaymentMethod } from '@/utils/paymentMethod';
 
 const DetalleVentaDialog = ({ visible, venta, onHide }) => {
     const [detalles, setDetalles] = useState([]);
@@ -13,21 +14,14 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
     const [fechaVenta, setFechaVenta] = useState('-');
     const [formaPago, setFormaPago] = useState('-');
     const [total, setTotal] = useState(0);
-
-    const isDev = import.meta?.env?.MODE !== 'production';
+    const toPaymentLabel = (value) => value ? formatPaymentMethod(value) : '-';
 
     const mapDetalle = (d) => {
-        if (isDev) {
-            console.log('[DetalleVentaDialog] detalle raw:', d);
-        }
         const productoBase = d.product || d.producto || d.product_data || { id: d.product_id, name: d.product_name };
         const producto = {
             ...productoBase,
             stock_unit: productoBase?.stock_unit || d.product_stock_unit || d.stock_unit
         };
-        if (isDev) {
-            console.log('[DetalleVentaDialog] producto resuelto:', producto, 'stock_unit:', producto?.stock_unit);
-        }
         const cantidad = d.quantity || d.cantidad || d.qty || 1;
         const precioUnit = d.price ?? d.precio ?? d.precioUnitario ?? d.unit_price ?? d.unit_price_with_tax ?? d.product_price ?? producto.price ?? 0;
         const subtotalRaw = d.subtotal ?? d.total ?? d.computed_subtotal ?? (precioUnit * cantidad);
@@ -63,10 +57,6 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
                 return;
             }
             const resp = await VentaService.getDetailsBySaleId(venta.id);
-            if (isDev) {
-                console.log('[DetalleVentaDialog] getDetailsBySaleId resp:', resp);
-                console.log('[DetalleVentaDialog] detalles venta raw:', resp?.data);
-            }
             if (resp.success) {
                 const list = resp.data?.results || resp.data || [];
                 if (list.length > 0) {
@@ -82,11 +72,6 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
             if (orderId) {
                 try {
                     const orderResp = await PedidoService.getById(orderId);
-                    if (isDev) {
-                        console.log('[DetalleVentaDialog] PedidoService.getById resp:', orderResp);
-                        console.log('[DetalleVentaDialog] pedido raw:', orderResp?.data);
-                        console.log('[DetalleVentaDialog] detalles pedido raw:', extractOrderDetails(orderResp?.data));
-                    }
                     if (orderResp.success) {
                         const detallesPedido = extractOrderDetails(orderResp.data);
                         const mapped = detallesPedido.map(mapDetalle);
@@ -125,7 +110,7 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
             if (!orderId) {
                 setClienteNombre('-');
                 setFechaVenta(venta?.date || venta?.fecha || '-');
-                setFormaPago(venta?.payment_method || venta?.formaPago || '-');
+                setFormaPago(toPaymentLabel(venta?.payment_method || venta?.formaPago));
                 return;
             }
             try {
@@ -136,7 +121,7 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
                     const fullName = customer ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim() : '-';
                     setClienteNombre(fullName || '-');
                     setFechaVenta(order?.date || order?.fechaPedido || venta?.date || '-');
-                    setFormaPago(order?.payment_method || venta?.payment_method || venta?.formaPago || '-');
+                    setFormaPago(toPaymentLabel(order?.payment_method || venta?.payment_method || venta?.formaPago));
                     if (!detalles.length) {
                         const detallesPedido = extractOrderDetails(order);
                         const mapped = detallesPedido.map(mapDetalle);
@@ -146,12 +131,12 @@ const DetalleVentaDialog = ({ visible, venta, onHide }) => {
                 } else {
                     setClienteNombre('-');
                     setFechaVenta(venta?.date || venta?.fecha || '-');
-                    setFormaPago(venta?.payment_method || venta?.formaPago || '-');
+                    setFormaPago(toPaymentLabel(venta?.payment_method || venta?.formaPago));
                 }
             } catch (err) {
                 setClienteNombre('-');
                 setFechaVenta(venta?.date || venta?.fecha || '-');
-                setFormaPago(venta?.payment_method || venta?.formaPago || '-');
+                setFormaPago(toPaymentLabel(venta?.payment_method || venta?.formaPago));
             }
         };
         loadOrder();

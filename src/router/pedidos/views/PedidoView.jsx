@@ -14,6 +14,8 @@ import { Button } from 'primereact/button';
 import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
 import { confirmDialog } from 'primereact/confirmdialog';
+import { extractStockUnit } from '@/utils/unitParser';
+import { normalizePaymentMethod } from '@/utils/paymentMethod';
 
 // Estados soportados por backend
 const STATUS_MAP = {
@@ -231,15 +233,21 @@ const PedidoView = () => {
       const productName = d.product_name || d.product?.name || d.producto?.name || (productId ? `Producto ${productId}` : 'Producto');
       const qty = d.quantity ?? d.cantidad ?? 1;
       const price = d.product_price ?? d.price ?? d.precio ?? d.product?.price ?? d.producto?.price ?? 0;
+      const unit = extractStockUnit(d);
+      const resolvedProduct = d.product || d.producto || (productId ? { id: productId, name: productName, price } : null);
+      const productoConUnidad = resolvedProduct
+        ? { ...resolvedProduct, stock_unit: resolvedProduct.stock_unit || resolvedProduct.stockUnit || unit }
+        : null;
       return {
         ...d,
         product_id: productId,
         product_name: productName,
         quantity: qty,
         cantidad: qty,
+        stock_unit: unit,
         product_price: price,
         subtotal: d.subtotal ?? Number((price * qty).toFixed(2)),
-        producto: d.product || d.producto || (productId ? { id: productId, name: productName, price } : null)
+        producto: productoConUnidad
       };
     });
 
@@ -510,6 +518,9 @@ const PedidoView = () => {
         state: 'completed',
         detail: detallesParaEnviar // Productos del formulario de venta
       };
+
+      const paymentMethod = normalizePaymentMethod(ventaData?.payment_method || ventaData?.paymentMethod);
+      updatePayload.payment_method = paymentMethod;
 
       // Campos adicionales necesarios
       if (selectedPedido.customer_id || selectedPedido.customer?.id) {

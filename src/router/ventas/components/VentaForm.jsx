@@ -11,12 +11,7 @@ import ProductoService from '@/router/productos/services/ProductoService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
 import VentaService from '@/router/ventas/services/VentaService';
 import { formatQuantityFromSource } from '@/utils/unitParser';
-
-const formasPago = [
-  { label: 'Efectivo', value: 'efectivo' },
-  { label: 'Transferencia', value: 'transferencia' },
-  { label: 'Tarjeta', value: 'tarjeta' }
-];
+import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHOD, normalizePaymentMethod } from '@/utils/paymentMethod';
 
 const buildItemsFromPedido = (pedidoData, productos = []) => {
   const detalles =
@@ -73,7 +68,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
   const [formData, setFormData] = useState({
     cliente: null,
     fecha: new Date(),
-    formaPago: 'efectivo',
+    formaPago: DEFAULT_PAYMENT_METHOD,
     items: [],
     total: 0,
     detalles: [],
@@ -113,7 +108,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       const baseForm = {
         cliente: null,
         fecha: new Date(),
-        formaPago: 'efectivo',
+        formaPago: DEFAULT_PAYMENT_METHOD,
         items: [],
         total: 0,
         detalles: [],
@@ -192,7 +187,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
           ...baseForm,
           cliente: clienteResolved,
           fecha: venta.date ? new Date(venta.date) : (venta.fecha ? new Date(venta.fecha) : new Date()),
-          formaPago: venta.payment_method || venta.formaPago || 'efectivo',
+          formaPago: normalizePaymentMethod(venta.payment_method || venta.formaPago),
           items: itemsVenta,
           detalles: itemsVenta,
           total: totalVenta,
@@ -211,7 +206,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
           ...baseForm,
           cliente: resolveCliente(pedidoCompleto?.customer || pedidoCompleto?.cliente),
           fecha: pedidoCompleto.fechaPedido ? new Date(pedidoCompleto.fechaPedido) : new Date(),
-          formaPago: 'efectivo',
+          formaPago: DEFAULT_PAYMENT_METHOD,
           items: itemsPedido,
           detalles: itemsPedido,
           total: totalPedido,
@@ -403,7 +398,7 @@ const loadPedidos = async () => {
       order_id: pedidoTarget.id,
       total_price: isNaN(totalParsed) ? 0 : Number(totalParsed.toFixed(2)),
       date: formData.fecha?.toISOString?.().slice(0, 10) || formData.fecha,
-      payment_method: formData.formaPago
+      payment_method: normalizePaymentMethod(formData.formaPago)
     };
     onSave(payload, formData.items);
   };
@@ -478,8 +473,8 @@ const loadPedidos = async () => {
             <label className="font-bold">Forma de Pago *</label>
             <Dropdown
               value={formData.formaPago}
-              options={formasPago}
-              onChange={(e) => setFormData({ ...formData, formaPago: e.value })}
+              options={PAYMENT_METHOD_OPTIONS}
+              onChange={(e) => setFormData({ ...formData, formaPago: normalizePaymentMethod(e.value) })}
               placeholder="Seleccione forma de pago"
             />
           </div>

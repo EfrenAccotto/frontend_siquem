@@ -9,6 +9,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Toast } from 'primereact/toast';
 import { Message } from 'primereact/message';
+import { parseQuantityValue } from '@/utils/unitParser';
 
 const ListadoPesajesView = () => {
     const [searchParams] = useSearchParams();
@@ -20,7 +21,16 @@ const ListadoPesajesView = () => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
     const [linkExpired, setLinkExpired] = useState(false);
+    const [filtersInfo, setFiltersInfo] = useState({ fechaDesde: null, fechaHasta: null, estado: null });
+    const [feedback, setFeedback] = useState({ visible: false, status: 'success', message: '' });
     const toast = useRef(null);
+
+    const triggerFeedback = (status, message) => {
+        const fallbackMessage = status === 'success'
+            ? 'Pesaje cargado correctamente'
+            : 'Ocurrió un problema al cargar el pesaje';
+        setFeedback({ visible: true, status, message: message || fallbackMessage });
+    };
 
     // Efecto principal para cargas datos (soporta uuid o legacy)
     useEffect(() => {
@@ -35,18 +45,19 @@ const ListadoPesajesView = () => {
                     if (!mounted) return;
 
                     if (response.success && response.data) {
-                        // Se asume que response.data es la lista de pedidos o contiene results.
-                        // Ajustar según respuesta real del endpoint 'shared/orders/{uuid}/'.
-                        // Si el backend devuelve status/info del share, buscar donde están los orders.
-                        // Generalmente DRF ListAPIView devuelve lista o { count, results }.
-                        // Si response.data tiene 'results', usarlo. Si es array, usarlo.
-                        const list = response.data.results || (Array.isArray(response.data) ? response.data : []);
+                        const sharedData = response.data;
+                        const list = sharedData.orders || sharedData.results || (Array.isArray(sharedData) ? sharedData : []);
 
                         const sorted = list.sort((a, b) => (b.id || 0) - (a.id || 0));
                         const mapped = sorted.map(p => ({
                             ...p,
                             detail: mapPedidoDetalle(p)
                         }));
+                        setFiltersInfo({
+                            fechaDesde: sharedData.start_date ?? sharedData.startDate ?? null,
+                            fechaHasta: sharedData.end_date ?? sharedData.endDate ?? null,
+                            estado: sharedData.state ?? sharedData.estado ?? null
+                        });
                         setPedidos(mapped);
                     } else {
                         // Fallo al obtener (posible expirado o inválido)
@@ -69,6 +80,7 @@ const ListadoPesajesView = () => {
                             fechaHasta: payload.fechaHasta,
                             estado: payload.estado
                         };
+                        setFiltersInfo(filters);
 
                         // Reutilizar lógica de filtrado cliente (o llamar al backend con filtros)
                         // Por simplicidad, llamamos getAll y filtramos (como estaba antes)
@@ -121,11 +133,12 @@ const ListadoPesajesView = () => {
         return rawDetails.map((d) => {
             const product = d.product || d.producto || {};
             const stockUnit = product.stock_unit || d.stock_unit || 'unit';
+            const parsedQuantity = parseQuantityValue(d.quantity ?? d.cantidad ?? 0);
             return {
                 ...d,
                 product_id: d.product_id ?? product.id,
                 product_name: d.product_name || product.name || 'Producto Desconocido',
-                quantity: d.quantity ?? d.cantidad ?? 0,
+                quantity: parsedQuantity,
                 stock_unit: stockUnit,
                 original_product: product
             };
@@ -166,6 +179,7 @@ const ListadoPesajesView = () => {
 
                 if (result.success) {
                     toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cambios guardados correctamente', life: 3000 });
+                    triggerFeedback('success');
                 } else {
                     throw new Error(result.error || 'Error al guardar cambios.');
                 }
@@ -190,11 +204,13 @@ const ListadoPesajesView = () => {
                     throw new Error(`Fallaron ${errors.length} actualizaciones.`);
                 }
                 toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Cambios guardados correctamente', life: 3000 });
+                triggerFeedback('success');
             }
         } catch (error) {
             console.error('Error guardando:', error);
             const msg = typeof error === 'string' ? error : (error.message || 'Error al guardar cambios');
             toast.current?.show({ severity: 'error', summary: 'Error', detail: msg, life: 3000 });
+            triggerFeedback('error', `${msg}`);
         } finally {
             setSaving(false);
         }
@@ -263,7 +279,7 @@ const ListadoPesajesView = () => {
                 <div>
                     <span className="text-xl font-bold text-900 block">Lista de Pesaje</span>
                     <span className="text-sm text-500">
-                        {pedidos.length} pedidos • {filters.fechaDesde || 'Todo'}
+                        {pedidos.length} pedidos • {filtersInfo.fechaDesde || 'Todo'}
                     </span>
                 </div>
             </div>
@@ -327,6 +343,22 @@ const ListadoPesajesView = () => {
                     disabled={pedidos.length === 0}
                 />
             </div>
+
+            {feedback.visible && (
+                <div className="pesaje-feedback-layer">
+                    <Card className={`text-center shadow-6 w-24rem pesaje-feedback-card ${feedback.status === 'success' ? 'is-success' : 'is-error'}`}>
+                        <i
+                            className={`pi ${feedback.status === 'success' ? 'pi-check-circle' : 'pi-times-circle'} text-6xl mb-4 pesaje-feedback-icon`}
+                        ></i>
+                        <h2 className="mb-2 pesaje-feedback-title">
+                            {feedback.status === 'success' ? 'Pesaje cargado correctamente' : 'Error al cargar el pesaje'}
+                        </h2>
+                        {feedback.status === 'success' ? '' : <p className="mb-4 pesaje-feedback-message">
+                            {feedback.message}
+                        </p>}
+                    </Card>
+                </div>
+            )}
         </div>
     );
 };
