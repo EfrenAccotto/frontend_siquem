@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 
 // ============================================================================
 // THEME CONTEXT
@@ -22,6 +22,10 @@ export const ThemeProvider = ({ children }) => {
     const toggleTheme = () => {
         setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
     };
+
+    const setThemeMode = useCallback((nextTheme) => {
+        setTheme(nextTheme === 'dark' ? 'dark' : 'light');
+    }, []);
 
     // Aplicar el tema cuando cambia
     useEffect(() => {
@@ -53,7 +57,7 @@ export const ThemeProvider = ({ children }) => {
     }, [theme]);
 
     return (
-        <ThemeContext.Provider value={{ theme, toggleTheme, isDark: theme === 'dark' }}>
+        <ThemeContext.Provider value={{ theme, toggleTheme, setTheme: setThemeMode, isDark: theme === 'dark' }}>
             {children}
         </ThemeContext.Provider>
     );

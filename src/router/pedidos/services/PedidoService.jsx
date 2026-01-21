@@ -121,8 +121,8 @@ class PedidoService {
 
   static async updateSharedOrders(shareId, payload) {
     try {
-      // Se asume PATCH o POST a la misma URL del share ID para guardar cambios en lote
-      const response = await axios.patch(`${PEDIDOS_ENDPOINT}/shared/orders/${shareId}/`, payload);
+      // PUT a la misma URL del share ID para guardar cambios en lote
+      const response = await axios.put(`${PEDIDOS_ENDPOINT}/shared/orders/${shareId}/`, payload);
       return { success: true, data: response.data, status: response.status };
     } catch (error) {
       return {

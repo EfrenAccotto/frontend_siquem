@@ -90,4 +90,35 @@ body.dark-theme .p-datatable .p-datatable-header {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
+/* Pesaje feedback layer */
+.pesaje-feedback-layer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 1.5rem;
+  z-index: 1200;
+}
+
+.pesaje-feedback-card {
+  border: none;
+  color: #fff;
+}
+
+.pesaje-feedback-card.is-success {
+  background: linear-gradient(145deg, #16a34a, #22c55e);
+}
+
+.pesaje-feedback-card.is-error {
+  background: linear-gradient(145deg, #dc2626, #ef4444);
+}
+
+.pesaje-feedback-icon,
+.pesaje-feedback-title,
+.pesaje-feedback-message {
+  color: #fff !important;
+}
+
 

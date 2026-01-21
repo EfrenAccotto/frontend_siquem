@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import UbicacionService from '@/router/ubicacion/services/UbicacionService';
+import { formatQuantityFromSource, extractStockUnit, parseQuantityValue } from '@/utils/unitParser';
 
 // Estados base permitidos en el formulario
 const estadoOptionsBase = [
@@ -66,15 +67,29 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
   const resolveProducto = (prodValue, productosList = []) => {
     if (!prodValue) return null;
-    if (typeof prodValue === 'object' && prodValue.name) {
-      return prodValue;
+
+    const normalizeResult = (productData) => ({
+      ...productData,
+      stock_unit: extractStockUnit(productData)
+    });
+
+    if (typeof prodValue === 'object' && (prodValue.name || prodValue.id)) {
+      return normalizeResult(prodValue);
     }
-    const prodId = prodValue.id || prodValue.product_id || prodValue.producto_id || prodValue;
-    const found = productosList.find((p) => p.id === prodId);
-    if (found) return found;
-    const prodName = prodValue.name || prodValue.product_name || `Producto ${prodId}`;
-    const prodPrice = prodValue.price || prodValue.product_price || prodValue.precio || 0;
-    return { id: prodId, name: prodName, price: prodPrice };
+
+    const rawId = prodValue?.id || prodValue?.product_id || prodValue?.producto_id || prodValue;
+    const matchId = rawId != null ? String(rawId) : null;
+    const found = productosList.find((p) => String(p.id) === matchId);
+    if (found) {
+      return normalizeResult(found);
+    }
+
+    return normalizeResult({
+      id: rawId,
+      name: `Producto ${rawId}`,
+      price: 0,
+      stock_unit: 'unit'
+    });
   };
 
   const mapItemsFromPedido = (pedidoData, productosList = []) => {
@@ -89,11 +104,13 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
         d.product || d.producto || d.product_id || d.producto_id,
         productosList
       );
-      const qty = d.quantity || d.cantidad || 1;
+      const unitFromDetail = extractStockUnit(d);
+      const qty = parseQuantityValue(d.quantity ?? d.cantidad ?? 1);
       return {
         id: d.id || Date.now() + Math.random(),
         producto: productoResuelto,
-        cantidad: qty
+        cantidad: qty,
+        stock_unit: unitFromDetail || productoResuelto?.stock_unit || 'unit'
       };
     });
   };
@@ -129,7 +146,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     return formatDireccionCliente(cliente);
   };
 
-  const isUnitProduct = (producto) => (producto?.stock_unit || 'unit') === 'unit';
+  const isUnitProduct = (producto) => extractStockUnit(producto) === 'unit';
 
   const normalizeCantidad = (producto, value) => {
     const num = Number(value);
@@ -224,7 +241,10 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     try {
       const resp = await ProductoService.getAll();
       if (resp.success) {
-        const lista = resp.data || [];
+        const lista = (resp.data || []).map((prod) => ({
+          ...prod,
+          stock_unit: extractStockUnit(prod)
+        }));
         setProductos(lista);
         return lista;
       }
@@ -345,10 +365,14 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     }
 
     setCantidadError('');
+    const normalizedProduct = selectedProducto?.stock_unit
+      ? selectedProducto
+      : { ...selectedProducto, stock_unit: extractStockUnit(selectedProducto) };
     const item = {
       id: Date.now(),
-      producto: selectedProducto,
-      cantidad: normalizeCantidad(selectedProducto, cantidad || 1)
+      producto: normalizedProduct,
+      cantidad: normalizeCantidad(normalizedProduct, cantidad || 1),
+      stock_unit: normalizedProduct.stock_unit || 'unit'
     };
     
     console.log('✅ Item a agregar:', item);
@@ -608,7 +632,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
               header="Producto"
               body={(rowData) => rowData.producto?.name || rowData.producto?.nombre || `ID ${rowData.producto?.id || rowData.producto}`}
             />
-            <Column field="cantidad" header="Cant." style={{ width: '12%' }} />
+            <Column
+              header="Cant."
+              body={(rowData) => formatQuantityFromSource(rowData.cantidad ?? rowData.quantity ?? 1, rowData)}
+              style={{ width: '12%' }}
+            />
             <Column
               header=""
               body={(rowData) => (

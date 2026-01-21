@@ -10,12 +10,8 @@ import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
 import VentaService from '@/router/ventas/services/VentaService';
-
-const formasPago = [
-  { label: 'Efectivo', value: 'efectivo' },
-  { label: 'Transferencia', value: 'transferencia' },
-  { label: 'Tarjeta', value: 'tarjeta' }
-];
+import { formatQuantityFromSource } from '@/utils/unitParser';
+import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHOD, normalizePaymentMethod } from '@/utils/paymentMethod';
 
 const buildItemsFromPedido = (pedidoData, productos = []) => {
   const detalles =
@@ -72,7 +68,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
   const [formData, setFormData] = useState({
     cliente: null,
     fecha: new Date(),
-    formaPago: 'efectivo',
+    formaPago: DEFAULT_PAYMENT_METHOD,
     items: [],
     total: 0,
     detalles: [],
@@ -112,7 +108,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       const baseForm = {
         cliente: null,
         fecha: new Date(),
-        formaPago: 'efectivo',
+        formaPago: DEFAULT_PAYMENT_METHOD,
         items: [],
         total: 0,
         detalles: [],
@@ -191,7 +187,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
           ...baseForm,
           cliente: clienteResolved,
           fecha: venta.date ? new Date(venta.date) : (venta.fecha ? new Date(venta.fecha) : new Date()),
-          formaPago: venta.payment_method || venta.formaPago || 'efectivo',
+          formaPago: normalizePaymentMethod(venta.payment_method || venta.formaPago),
           items: itemsVenta,
           detalles: itemsVenta,
           total: totalVenta,
@@ -210,7 +206,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
           ...baseForm,
           cliente: resolveCliente(pedidoCompleto?.customer || pedidoCompleto?.cliente),
           fecha: pedidoCompleto.fechaPedido ? new Date(pedidoCompleto.fechaPedido) : new Date(),
-          formaPago: 'efectivo',
+          formaPago: DEFAULT_PAYMENT_METHOD,
           items: itemsPedido,
           detalles: itemsPedido,
           total: totalPedido,
@@ -402,7 +398,7 @@ const loadPedidos = async () => {
       order_id: pedidoTarget.id,
       total_price: isNaN(totalParsed) ? 0 : Number(totalParsed.toFixed(2)),
       date: formData.fecha?.toISOString?.().slice(0, 10) || formData.fecha,
-      payment_method: formData.formaPago
+      payment_method: normalizePaymentMethod(formData.formaPago)
     };
     onSave(payload, formData.items);
   };
@@ -477,8 +473,8 @@ const loadPedidos = async () => {
             <label className="font-bold">Forma de Pago *</label>
             <Dropdown
               value={formData.formaPago}
-              options={formasPago}
-              onChange={(e) => setFormData({ ...formData, formaPago: e.value })}
+              options={PAYMENT_METHOD_OPTIONS}
+              onChange={(e) => setFormData({ ...formData, formaPago: normalizePaymentMethod(e.value) })}
               placeholder="Seleccione forma de pago"
             />
           </div>
@@ -504,43 +500,42 @@ const loadPedidos = async () => {
 
         <div className="col-12">
           <div className="p-3 border-1 surface-border border-round surface-ground">
-            <h4 className="m-0 mb-3">Agregar Producto</h4>
-            {isVentaCompleted && (
+            <h4 className="m-0 mb-3">{isVentaCompleted ? 'Productos de la Venta' : 'Agregar Producto'}</h4>
+            {isVentaCompleted ? (
               <small className="text-500 block mb-2">
-                Venta completada: no se pueden modificar cantidades ni agregar/quitar productos.
+                Venta completada: mostrando productos en modo de solo lectura.
               </small>
+            ) : (
+              <div className="formgrid grid">
+                <div className="field col-12 md:col-6">
+                  <Dropdown
+                    value={selectedProducto}
+                    options={productosDisponibles}
+                    onChange={(e) => setSelectedProducto(e.value)}
+                    optionLabel="name"
+                    placeholder="Seleccione producto"
+                    filter
+                  />
+                </div>
+                <div className="field col-12 md:col-3">
+                  <InputNumber
+                    value={cantidad}
+                    onValueChange={(e) => setCantidad(e.value)}
+                    showButtons
+                    min={1}
+                    placeholder="Cantidad"
+                  />
+                </div>
+                <div className="field col-12 md:col-3">
+                  <Button
+                    label="Agregar"
+                    icon="pi pi-plus"
+                    onClick={handleAddItem}
+                    disabled={!selectedProducto}
+                  />
+                </div>
+              </div>
             )}
-            <div className="formgrid grid">
-              <div className="field col-12 md:col-6">
-                <Dropdown
-                  value={selectedProducto}
-                  options={productosDisponibles}
-                  onChange={(e) => setSelectedProducto(e.value)}
-                  optionLabel="name"
-                  placeholder="Seleccione producto"
-                  filter
-                  disabled={isVentaCompleted}
-                />
-              </div>
-              <div className="field col-12 md:col-3">
-                <InputNumber
-                  value={cantidad}
-                  onValueChange={(e) => setCantidad(e.value)}
-                  showButtons
-                  min={1}
-                  placeholder="Cantidad"
-                  disabled={isVentaCompleted}
-                />
-              </div>
-              <div className="field col-12 md:col-3">
-                <Button
-                  label="Agregar"
-                  icon="pi pi-plus"
-                  onClick={handleAddItem}
-                  disabled={!selectedProducto || isVentaCompleted}
-                />
-              </div>
-            </div>
           </div>
         </div>
 
@@ -552,22 +547,23 @@ const loadPedidos = async () => {
             ></Column>
             <Column
               header="Cant."
-              body={(rowData) => rowData.cantidad ?? rowData.quantity ?? 1}
+              body={(rowData) => formatQuantityFromSource(rowData.cantidad ?? rowData.quantity ?? 1, rowData)}
               style={{ width: '12%' }}
             ></Column>
             <Column header="Precio Unit." body={precioTemplate}></Column>
             <Column header="Subtotal" body={subtotalTemplate}></Column>
-            <Column
-              body={(rowData) => (
-                <Button
-                  icon="pi pi-trash"
-                  className="p-button-danger p-button-text p-button-sm"
-                  onClick={() => handleRemoveItem(rowData)}
-                  disabled={isVentaCompleted}
-                />
-              )}
-              style={{ width: '5%' }}
-            ></Column>
+            {!isVentaCompleted && (
+              <Column
+                body={(rowData) => (
+                  <Button
+                    icon="pi pi-trash"
+                    className="p-button-danger p-button-text p-button-sm"
+                    onClick={() => handleRemoveItem(rowData)}
+                  />
+                )}
+                style={{ width: '5%' }}
+              ></Column>
+            )}
           </DataTable>
           <div className="flex justify-content-end mt-3">
             <h3 className="m-0">

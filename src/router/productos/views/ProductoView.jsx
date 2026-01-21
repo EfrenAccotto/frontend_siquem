@@ -5,15 +5,7 @@ import ProductoService from '../services/ProductoService';
 import ProductoForm from '../components/ProductoForm';
 import { Toast } from 'primereact/toast';
 import { confirmDialog } from 'primereact/confirmdialog';
-
-const formatStockValue = (value, unit) => {
-  const num = Number(value ?? 0);
-  const isKg = unit === 'kg';
-  return new Intl.NumberFormat('es-AR', {
-    minimumFractionDigits: isKg ? 3 : 0,
-    maximumFractionDigits: isKg ? 3 : 0
-  }).format(isNaN(num) ? 0 : num);
-};
+import { formatUnitValue } from '@/utils/unitParser';
 
 const formatStockUnit = (unit) => {
   if (unit === 'kg') return 'Kg';
@@ -35,19 +27,19 @@ const Columns = [
     field: 'stock',
     header: 'Stock Total',
     style: { width: '10%' },
-    body: (rowData) => formatStockValue(rowData.stock, rowData.stock_unit)
+    body: (rowData) => formatUnitValue(rowData.stock, rowData.stock_unit)
   },
   {
     field: 'reserve_stock',
     header: 'Stock Reservado',
     style: { width: '12%' },
-    body: (rowData) => formatStockValue(rowData.reserve_stock, rowData.stock_unit)
+    body: (rowData) => formatUnitValue(rowData.reserve_stock, rowData.stock_unit)
   },
   {
     field: 'stock_disponible',
     header: 'Stock Disponible',
     style: { width: '12%' },
-    body: (rowData) => formatStockValue((Number(rowData.stock) || 0) - (Number(rowData.reserve_stock) || 0), rowData.stock_unit)
+    body: (rowData) => formatUnitValue((Number(rowData.stock) || 0) - (Number(rowData.reserve_stock) || 0), rowData.stock_unit)
   },
 ];
 

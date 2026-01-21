@@ -14,6 +14,8 @@ import { Button } from 'primereact/button';
 import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
 import { confirmDialog } from 'primereact/confirmdialog';
+import { extractStockUnit } from '@/utils/unitParser';
+import { normalizePaymentMethod } from '@/utils/paymentMethod';
 
 // Estados soportados por backend
 const STATUS_MAP = {
@@ -26,8 +28,6 @@ const STATUS_MAP = {
 const getStatusLabel = (status) => {
   return STATUS_MAP[status] || status || 'Sin Estado';
 };
-
-
 
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
@@ -233,15 +233,21 @@ const PedidoView = () => {
       const productName = d.product_name || d.product?.name || d.producto?.name || (productId ? `Producto ${productId}` : 'Producto');
       const qty = d.quantity ?? d.cantidad ?? 1;
       const price = d.product_price ?? d.price ?? d.precio ?? d.product?.price ?? d.producto?.price ?? 0;
+      const unit = extractStockUnit(d);
+      const resolvedProduct = d.product || d.producto || (productId ? { id: productId, name: productName, price } : null);
+      const productoConUnidad = resolvedProduct
+        ? { ...resolvedProduct, stock_unit: resolvedProduct.stock_unit || resolvedProduct.stockUnit || unit }
+        : null;
       return {
         ...d,
         product_id: productId,
         product_name: productName,
         quantity: qty,
         cantidad: qty,
+        stock_unit: unit,
         product_price: price,
         subtotal: d.subtotal ?? Number((price * qty).toFixed(2)),
-        producto: d.product || d.producto || (productId ? { id: productId, name: productName, price } : null)
+        producto: productoConUnidad
       };
     });
 
@@ -296,7 +302,6 @@ const PedidoView = () => {
 
   const handleGenerarVenta = async () => {
     if (!selectedPedido || selectedPedido.state === 'cancelled') return;
-
     // Verificar si el pedido ya está completado
     if (selectedPedido.state === 'completed') {
       toast.current?.show({
@@ -317,7 +322,6 @@ const PedidoView = () => {
         const resp = await PedidoService.getById(selectedPedido.id);
         if (resp.success) {
           const pedidoCompleto = mapPedidoDetalle(resp.data);
-
           // Verificar nuevamente con datos actualizados
           if (pedidoCompleto.state === 'completed') {
             toast.current?.show({
@@ -328,7 +332,6 @@ const PedidoView = () => {
             });
             return;
           }
-
           setSelectedPedido(pedidoCompleto);
           setPedidoParaVenta(pedidoCompleto);
         }
@@ -491,14 +494,12 @@ const PedidoView = () => {
 
       console.log('🔄 Completando pedido con productos del formulario de venta...');
       console.log('📋 Items del formulario:', items);
-
       // Transformar los items del formulario de venta al formato que espera el serializer
       // Estos items pueden haber sido modificados por el usuario en el modal de venta
       // IMPORTANTE: Solo enviar product_id y quantity - NO enviar subtotal, price, etc.
       const detallesParaEnviar = (items || []).map(item => {
         const productId = item.producto?.id || item.product_id || item.product?.id;
         const quantity = item.cantidad || item.quantity || 1;
-
         return {
           product_id: productId,
           quantity: Number(quantity) // Asegurar que sea número
@@ -518,6 +519,9 @@ const PedidoView = () => {
         detail: detallesParaEnviar // Productos del formulario de venta
       };
 
+      const paymentMethod = normalizePaymentMethod(ventaData?.payment_method || ventaData?.paymentMethod);
+      updatePayload.payment_method = paymentMethod;
+
       // Campos adicionales necesarios
       if (selectedPedido.customer_id || selectedPedido.customer?.id) {
         updatePayload.customer_id = selectedPedido.customer_id || selectedPedido.customer?.id;
@@ -536,7 +540,6 @@ const PedidoView = () => {
       }
 
       console.log('📤 Payload completo con productos modificados:', updatePayload);
-
       const updateResponse = await PedidoService.update(selectedPedido.id, updatePayload);
 
       if (!updateResponse.success) {
@@ -574,7 +577,6 @@ const PedidoView = () => {
       setPedidoParaVenta(null);
     }
   };
-
 
 
   const eliminarSeleccionado = async () => {
@@ -824,7 +826,7 @@ const PedidoView = () => {
       >
         <div className="flex flex-column gap-3">
           <p className="m-0 text-color-secondary">
-            Enlace temporal válido por 2 horas.
+            Enlace temporal válido por 1 dia.
           </p>
           <div className="p-inputgroup">
             <input

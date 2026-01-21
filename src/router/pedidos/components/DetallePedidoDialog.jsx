@@ -3,6 +3,7 @@ import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { ProgressSpinner } from 'primereact/progressspinner';
+import { formatQuantityFromSource, extractStockUnit } from '@/utils/unitParser';
 
 const formatAddress = (addr) => {
   if (!addr) return '-';
@@ -21,14 +22,30 @@ const STATUS_MAP = {
   cancelled: 'Cancelado'
 };
 
+const normalizeDetalleItem = (item) => {
+  const unit = extractStockUnit(item);
+  const ensureUnitOnProduct = (prod) => {
+    if (!prod) return null;
+    return prod.stock_unit || prod.stockUnit ? prod : { ...prod, stock_unit: unit };
+  };
+
+  return {
+    ...item,
+    stock_unit: unit,
+    product: ensureUnitOnProduct(item.product),
+    producto: ensureUnitOnProduct(item.producto)
+  };
+};
+
 const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
-  const detalles = Array.isArray(pedido?.detalles)
+  const detallesRaw = Array.isArray(pedido?.detalles)
     ? pedido.detalles
     : Array.isArray(pedido?.detail)
       ? pedido.detail
       : Array.isArray(pedido?.items)
         ? pedido.items
         : [];
+  const detalles = detallesRaw.map(normalizeDetalleItem);
 
   const clienteNombre = `${pedido?.customer?.first_name || pedido?.cliente?.first_name || ''} ${pedido?.customer?.last_name || pedido?.cliente?.last_name || ''}`.trim() || '-';
   const direccionEnvio = pedido?.shipping_address_str
@@ -41,27 +58,6 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
   const formatCurrency = (value) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
-  const getStockUnit = (rowData) =>
-    rowData?.producto?.stock_unit ||
-    rowData?.product?.stock_unit ||
-    rowData?.product_data?.stock_unit ||
-    rowData?.product_stock_unit ||
-    rowData?.stock_unit ||
-    'unit';
-
-  const formatCantidadConUnidad = (qty, stockUnit) => {
-    const num = Number(qty);
-    if (!isFinite(num)) return '-';
-    if (stockUnit === 'kg') {
-      const formatted = new Intl.NumberFormat('es-AR', {
-        minimumFractionDigits: 3,
-        maximumFractionDigits: 3
-      }).format(num);
-      return `${formatted} kg`;
-    }
-    return `${Math.trunc(num)} u`;
-  };
-
   const productoTemplate = (rowData) =>
     rowData.producto?.name ||
     rowData.product?.name ||
@@ -70,7 +66,7 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
 
   const cantidadTemplate = (rowData) => {
     const qty = rowData.cantidad ?? rowData.quantity ?? 1;
-    return formatCantidadConUnidad(qty, getStockUnit(rowData));
+    return formatQuantityFromSource(qty, rowData);
   };
 
   const precioTemplate = (rowData) => {
