@@ -27,16 +27,6 @@ const getStatusLabel = (status) => {
   return STATUS_MAP[status] || status || 'Sin Estado';
 };
 
-// Funci?n para obtener color del estado
-const getStatusSeverity = (status) => {
-  const severityMap = {
-    'pending': 'warning',
-    'completed': 'success',
-    'cancelled': 'danger'
-  };
-  return severityMap[status] || 'secondary';
-};
-
 const estadoOptions = [
   { label: 'Pendiente', value: 'pending' },
   { label: 'Completado', value: 'completed' },
@@ -70,6 +60,15 @@ const PedidoView = () => {
   const [fechaDesdeHoja, setFechaDesdeHoja] = useState(null);
   const [fechaHastaHoja, setFechaHastaHoja] = useState(null);
   const [estadoHojaRuta, setEstadoHojaRuta] = useState(null);
+
+  // Estados para Modal de Pesajes
+  const [showPesajeDialog, setShowPesajeDialog] = useState(false);
+  const [fechaDesdePesaje, setFechaDesdePesaje] = useState(null);
+  const [fechaHastaPesaje, setFechaHastaPesaje] = useState(null);
+  const [generatedLink, setGeneratedLink] = useState('');
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+
+
   const [loadingVentaBtn, setLoadingVentaBtn] = useState(false);
   const [pedidoParaVenta, setPedidoParaVenta] = useState(null);
   const [filters, setFilters] = useState({ estado: null, clienteId: null, search: '' });
@@ -125,9 +124,9 @@ const PedidoView = () => {
 
   const clienteOptions = Array.isArray(clientes)
     ? clientes.map((cliente) => ({
-        label: `${cliente.first_name || ''} ${cliente.last_name || ''}`.trim() || cliente.name,
-        value: cliente.id
-      }))
+      label: `${cliente.first_name || ''} ${cliente.last_name || ''}`.trim() || cliente.name,
+      value: cliente.id
+    }))
     : [];
 
   const handleEstadoFilter = (value) => {
@@ -148,6 +147,56 @@ const PedidoView = () => {
   const handleNuevo = () => {
     setPedidoEditando(null);
     setShowDialog(true);
+  };
+
+  const handleOpenPesajes = () => {
+    setShowPesajeDialog(true);
+  };
+
+  const handleGenerarPesajes = async () => {
+    if (!fechaDesdePesaje || !fechaHastaPesaje) {
+      toast.current?.show({ severity: 'warn', summary: 'Atención', detail: 'Fecha desde y Fecha hasta son obligatorias', life: 3000 });
+      return;
+    }
+
+    const dDesde = formatDateISO(fechaDesdePesaje);
+    const dHasta = formatDateISO(fechaHastaPesaje);
+
+    // Payload requerido por el backend
+    const payload = {
+      start_date: dDesde,
+      end_date: dHasta,
+      state: 'pending' // Hardcodeado por requerimiento
+    };
+
+    try {
+      const resp = await PedidoService.generateShareLink(payload);
+      if (resp.success && resp.data?.share_id) {
+        // Construir link con el share_id retornado
+        // Frontend Route: /operario/pesajes?uuid={share_id}
+        // Nota: resp.data.url es la URL de la API, no la usamos para el usuario final.
+        const shareId = resp.data.share_id;
+        const frontendUrl = `${window.location.origin}/operario/pesajes?uuid=${shareId}`;
+
+        setGeneratedLink(frontendUrl);
+        setShowPesajeDialog(false);
+        setShowLinkDialog(true);
+      } else {
+        throw new Error(resp.error || 'No se pudo generar el link');
+      }
+    } catch (error) {
+      console.error(error);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Falló la generación del link', life: 3000 });
+    }
+  };
+
+  const copyLinkToClipboard = () => {
+    navigator.clipboard.writeText(generatedLink);
+    toast.current?.show({ severity: 'success', summary: 'Copiado', detail: 'Link copiado al portapapeles', life: 2000 });
+  };
+
+  const openLinkInNewTab = () => {
+    window.open(generatedLink, '_blank');
   };
 
   const formatAddress = (addr) => {
@@ -245,7 +294,6 @@ const PedidoView = () => {
 
   const handleGenerarVenta = async () => {
     if (!selectedPedido || selectedPedido.state === 'cancelled') return;
-    
     // Verificar si el pedido ya está completado
     if (selectedPedido.state === 'completed') {
       toast.current?.show({
@@ -266,7 +314,6 @@ const PedidoView = () => {
         const resp = await PedidoService.getById(selectedPedido.id);
         if (resp.success) {
           const pedidoCompleto = mapPedidoDetalle(resp.data);
-          
           // Verificar nuevamente con datos actualizados
           if (pedidoCompleto.state === 'completed') {
             toast.current?.show({
@@ -277,7 +324,6 @@ const PedidoView = () => {
             });
             return;
           }
-          
           setSelectedPedido(pedidoCompleto);
           setPedidoParaVenta(pedidoCompleto);
         }
@@ -440,14 +486,12 @@ const PedidoView = () => {
 
       console.log('🔄 Completando pedido con productos del formulario de venta...');
       console.log('📋 Items del formulario:', items);
-      
       // Transformar los items del formulario de venta al formato que espera el serializer
       // Estos items pueden haber sido modificados por el usuario en el modal de venta
       // IMPORTANTE: Solo enviar product_id y quantity - NO enviar subtotal, price, etc.
       const detallesParaEnviar = (items || []).map(item => {
         const productId = item.producto?.id || item.product_id || item.product?.id;
         const quantity = item.cantidad || item.quantity || 1;
-        
         return {
           product_id: productId,
           quantity: Number(quantity) // Asegurar que sea número
@@ -485,7 +529,6 @@ const PedidoView = () => {
       }
 
       console.log('📤 Payload completo con productos modificados:', updatePayload);
-      
       const updateResponse = await PedidoService.update(selectedPedido.id, updatePayload);
 
       if (!updateResponse.success) {
@@ -496,9 +539,9 @@ const PedidoView = () => {
       // Actualizar estado local
       const updatedPedido = { ...selectedPedido, state: 'completed' };
       setSelectedPedido(updatedPedido);
-      
-      setPedidos(prev => prev.map(p => 
-        p.id === selectedPedido.id 
+
+      setPedidos(prev => prev.map(p =>
+        p.id === selectedPedido.id
           ? { ...p, state: 'completed' }
           : p
       ));
@@ -524,20 +567,6 @@ const PedidoView = () => {
     }
   };
 
-  const handleGuardarDetalle = (pedidoActualizado) => {
-    const pedidosActualizados = pedidos.map((p) =>
-      p.id === pedidoActualizado.id ? pedidoActualizado : p
-    );
-    setPedidos(pedidosActualizados);
-    setSelectedPedido(pedidoActualizado);
-
-    toast.current?.show({
-      severity: 'success',
-      summary: 'Exito',
-      detail: 'Detalle de pedido actualizado correctamente',
-      life: 3000
-    });
-  };
 
   const eliminarSeleccionado = async () => {
     if (!selectedPedido) return;
@@ -583,19 +612,19 @@ const PedidoView = () => {
   // Filtro cliente/estado/búsqueda en front para garantizar funcionamiento
   const filteredPedidos = Array.isArray(pedidos)
     ? pedidos.filter((p) => {
-        const term = (filters.search || '').toLowerCase().trim();
-        if (filters.estado && p.state !== filters.estado) return false;
-        if (filters.clienteId && (p.customer?.id || p.customer_id) !== filters.clienteId) return false;
-        if (!term) return true;
+      const term = (filters.search || '').toLowerCase().trim();
+      if (filters.estado && p.state !== filters.estado) return false;
+      if (filters.clienteId && (p.customer?.id || p.customer_id) !== filters.clienteId) return false;
+      if (!term) return true;
 
-        const nombre = `${p.customer?.first_name || ''} ${p.customer?.last_name || ''}`.toLowerCase();
-        const idMatch = (p.id || '').toString().toLowerCase().includes(term);
-        const obsMatch = (p.observations || '').toLowerCase().includes(term);
-        const fechaMatch = (p.date || '').toString().toLowerCase().includes(term);
-        const nombreMatch = nombre.includes(term);
+      const nombre = `${p.customer?.first_name || ''} ${p.customer?.last_name || ''}`.toLowerCase();
+      const idMatch = (p.id || '').toString().toLowerCase().includes(term);
+      const obsMatch = (p.observations || '').toLowerCase().includes(term);
+      const fechaMatch = (p.date || '').toString().toLowerCase().includes(term);
+      const nombreMatch = nombre.includes(term);
 
-        return idMatch || obsMatch || fechaMatch || nombreMatch;
-      })
+      return idMatch || obsMatch || fechaMatch || nombreMatch;
+    })
     : [];
 
   const direccionTemplate = (rowData) => {
@@ -621,11 +650,11 @@ const PedidoView = () => {
       completed: 'p-badge-success p-1 border-round-sm',
       cancelled: 'p-badge-danger p-1 border-round-sm',
     };
-    
+
     const status = rowData.state || rowData.status;
     const className = estadoClasses[status] || 'p-badge-secondary';
     const label = getStatusLabel(status);
-    
+
     return <span className={`p-badge ${className}`}>{label}</span>;
   };
 
@@ -673,6 +702,12 @@ const PedidoView = () => {
             showDetail={true}
             showExport={false}
             extraButtons={[
+              {
+                label: 'Listado de Pesajes',
+                icon: 'pi pi-list',
+                className: 'p-button-info',
+                onClick: handleOpenPesajes,
+              },
               {
                 label: 'Hoja de ruta',
                 icon: 'pi pi-send',
@@ -762,14 +797,40 @@ const PedidoView = () => {
 
       <VentaForm
         visible={showVentaDialog}
+        pedido={pedidoParaVenta}
         onHide={() => {
           setShowVentaDialog(false);
           setPedidoParaVenta(null);
         }}
         onSave={handleGuardarVenta}
         loading={savingVenta}
-        pedido={pedidoParaVenta || selectedPedido}
       />
+
+      <Dialog
+        header="Link Generado para Responsable de Almacén"
+        visible={showLinkDialog}
+        onHide={() => setShowLinkDialog(false)}
+        style={{ width: '500px' }}
+        modal
+      >
+        <div className="flex flex-column gap-3">
+          <p className="m-0 text-color-secondary">
+            Enlace temporal válido por 2 horas.
+          </p>
+          <div className="p-inputgroup">
+            <input
+              type="text"
+              className="p-inputtext p-component w-full"
+              value={generatedLink}
+              readOnly
+            />
+            <Button icon="pi pi-copy" onClick={copyLinkToClipboard} tooltip="Copiar" />
+            <Button icon="pi pi-external-link" onClick={openLinkInNewTab} tooltip="Abrir" />
+          </div>
+        </div>
+      </Dialog>
+
+
 
       <Dialog
         visible={showHojaRutaDialog}
@@ -828,6 +889,54 @@ const PedidoView = () => {
           </div>
           <div className="col-12">
             <small className="text-500 block mt-1">Si no eliges filtros, se generarán todos los pedidos agrupados por zona.</small>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Nuevo Dialogo Pesajes */}
+      <Dialog
+        visible={showPesajeDialog}
+        onHide={() => setShowPesajeDialog(false)}
+        header="Listado de Pesajes"
+        style={{ width: '400px' }}
+        footer={
+          <div className="flex justify-content-end gap-2">
+            <Button label="Cancelar" className="p-button-text" onClick={() => setShowPesajeDialog(false)} />
+            <Button label="Generar" icon="pi pi-check" onClick={handleGenerarPesajes} />
+          </div>
+        }
+      >
+        <div className="grid">
+          <div className="col-12">
+            <label className="font-bold">Filtros (Obligatorio)</label>
+          </div>
+          <div className="col-12 md:col-6">
+            <div className="field">
+              <label className="text-500">Fecha Desde</label>
+              <Calendar
+                value={fechaDesdePesaje}
+                onChange={(e) => setFechaDesdePesaje(e.value)}
+                dateFormat="dd/mm/yy"
+                showIcon
+                required
+                className={`w-full ${!fechaDesdePesaje ? 'p-invalid' : ''}`}
+              />
+              {!fechaDesdePesaje && <small className="p-error block">Requerido</small>}
+            </div>
+          </div>
+          <div className="col-12 md:col-6">
+            <div className="field">
+              <label className="text-500">Fecha Hasta</label>
+              <Calendar
+                value={fechaHastaPesaje}
+                onChange={(e) => setFechaHastaPesaje(e.value)}
+                dateFormat="dd/mm/yy"
+                showIcon
+                required
+                className={`w-full ${!fechaHastaPesaje ? 'p-invalid' : ''}`}
+              />
+              {!fechaHastaPesaje && <small className="p-error block">Requerido</small>}
+            </div>
           </div>
         </div>
       </Dialog>

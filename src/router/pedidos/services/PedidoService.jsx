@@ -89,6 +89,49 @@ class PedidoService {
       };
     }
   }
+
+  // --- Shared / Pesaje Links ---
+
+  static async generateShareLink(payload) {
+    try {
+      const response = await axios.post(`${PEDIDOS_ENDPOINT}/export/share/`, payload);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || 'Error al generar link de pesaje',
+        status: error.response?.status || 500
+      };
+    }
+  }
+
+  static async getSharedOrders(shareId) {
+    try {
+      // El endpoint retornará la data filtrada asociada a ese share_id
+      const response = await axios.get(`${PEDIDOS_ENDPOINT}/shared/orders/${shareId}/`);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || 'Error al obtener pedidos compartidos',
+        status: error.response?.status || 500
+      };
+    }
+  }
+
+  static async updateSharedOrders(shareId, payload) {
+    try {
+      // Se asume PATCH o POST a la misma URL del share ID para guardar cambios en lote
+      const response = await axios.patch(`${PEDIDOS_ENDPOINT}/shared/orders/${shareId}/`, payload);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || 'Error al guardar cambios de pesaje',
+        status: error.response?.status || 500
+      };
+    }
+  }
 }
 
 export default PedidoService;
