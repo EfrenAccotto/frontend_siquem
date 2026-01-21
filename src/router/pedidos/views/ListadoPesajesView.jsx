@@ -293,7 +293,7 @@ const ListadoPesajesView = () => {
                 </div>
             </div>
 
-            <div className="p-3 flex flex-column gap-3 max-w-60rem mx-auto">
+            <div className="p-3 flex flex-column gap-3 max-w-60rem mx-auto" style={{ paddingBottom: '120px' }}>
                 {pedidos.length === 0 && (
                     <div className="text-center p-5 text-500">No hay pedidos asignados.</div>
                 )}
@@ -340,9 +340,6 @@ const ListadoPesajesView = () => {
                     </div>
                 ))}
             </div>
-
-            {/* Espaciador para evitar que el footer fijo tape el contenido */}
-            <div style={{ height: '8rem' }}></div>
 
             <div className="fixed bottom-0 left-0 w-full p-3 bg-white border-top-1 surface-border shadow-8 z-5 flex justify-content-end">
                 <Button
