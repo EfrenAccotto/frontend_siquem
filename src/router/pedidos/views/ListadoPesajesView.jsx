@@ -22,6 +22,8 @@ const ListadoPesajesView = () => {
     const [linkExpired, setLinkExpired] = useState(false);
     const toast = useRef(null);
 
+    const [filters, setFilters] = useState({});
+
     // Efecto principal para cargas datos (soporta uuid o legacy)
     useEffect(() => {
         let mounted = true;
@@ -36,10 +38,6 @@ const ListadoPesajesView = () => {
 
                     if (response.success && response.data) {
                         // Se asume que response.data es la lista de pedidos o contiene results.
-                        // Ajustar según respuesta real del endpoint 'shared/orders/{uuid}/'.
-                        // Si el backend devuelve status/info del share, buscar donde están los orders.
-                        // Generalmente DRF ListAPIView devuelve lista o { count, results }.
-                        // Si response.data tiene 'results', usarlo. Si es array, usarlo.
                         const list = response.data.results || (Array.isArray(response.data) ? response.data : []);
 
                         const sorted = list.sort((a, b) => (b.id || 0) - (a.id || 0));
@@ -64,11 +62,12 @@ const ListadoPesajesView = () => {
                         }
 
                         // Cargar pedidos normales con filtros
-                        const filters = {
+                        const _filters = {
                             fechaDesde: payload.fechaDesde,
                             fechaHasta: payload.fechaHasta,
                             estado: payload.estado
                         };
+                        setFilters(_filters);
 
                         // Reutilizar lógica de filtrado cliente (o llamar al backend con filtros)
                         // Por simplicidad, llamamos getAll y filtramos (como estaba antes)
@@ -77,13 +76,13 @@ const ListadoPesajesView = () => {
                         if (resp.success) {
                             let list = resp.data?.results || resp.data || [];
                             // ... lógica de filtrado simple ...
-                            if (filters.fechaDesde || filters.fechaHasta || filters.estado) {
+                            if (_filters.fechaDesde || _filters.fechaHasta || _filters.estado) {
                                 list = list.filter(p => {
-                                    if (filters.estado && p.state !== filters.estado) return false;
+                                    if (_filters.estado && p.state !== _filters.estado) return false;
                                     if (p.date) {
                                         const pDate = new Date(p.date);
-                                        if (filters.fechaDesde && pDate < new Date(filters.fechaDesde)) return false;
-                                        if (filters.fechaHasta && pDate > new Date(filters.fechaHasta)) return false;
+                                        if (_filters.fechaDesde && pDate < new Date(_filters.fechaDesde)) return false;
+                                        if (_filters.fechaHasta && pDate > new Date(_filters.fechaHasta)) return false;
                                     }
                                     return true;
                                 });
@@ -255,7 +254,7 @@ const ListadoPesajesView = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-8 font-primary">
+        <div className="min-h-screen bg-gray-50 pb-32 font-primary">
             <Toast ref={toast} />
 
             {/* Header Tipo App Mobile/Tablet */}
