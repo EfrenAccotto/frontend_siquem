@@ -280,7 +280,7 @@ const ListadoPesajesView = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 pb-32 font-primary">
+        <div className="min-h-screen bg-gray-50 font-primary" style={{ paddingBottom: '10rem' }}>
             <Toast ref={toast} />
 
             {/* Header Tipo App Mobile/Tablet */}
