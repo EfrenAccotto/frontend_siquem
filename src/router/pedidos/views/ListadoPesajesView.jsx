@@ -293,52 +293,54 @@ const ListadoPesajesView = () => {
                 </div>
             </div>
 
-            <div className="p-3 flex flex-column gap-3 max-w-60rem mx-auto" style={{ paddingBottom: '120px' }}>
-                {pedidos.length === 0 && (
-                    <div className="text-center p-5 text-500">No hay pedidos asignados.</div>
-                )}
+            <div>
+                <div className="p-3 flex flex-column gap-3 max-w-60rem mx-auto overflow-scroll" style={{ maxHeight: '85vh' }}>
+                    {pedidos.length === 0 && (
+                        <div className="text-center p-5 text-500">No hay pedidos asignados.</div>
+                    )}
 
-                {pedidos.map((order) => (
-                    <div key={order.id} className="bg-white border-round-xl shadow-1 overflow-hidden transition-all hover:shadow-3">
-                        <div className="p-3 border-bottom-1 surface-border bg-gray-50">
-                            <div className="flex justify-content-between align-items-start">
-                                <div>
-                                    <span className="text-primary font-bold text-lg">Pedido #{order.id}</span>
-                                    <div className="text-900 font-medium mt-1">
-                                        Cliente: {order.customer?.first_name} {order.customer?.last_name}
-                                    </div>
-                                    <div className="text-600 text-sm mt-1">
-                                        <i className="pi pi-map-marker text-xs mr-1"></i>
-                                        {order.shipping_address_str || order.customer?.address?.street || 'Sin Dirección'}
-                                    </div>
-                                    <div className="text-600 text-sm">
-                                        <i className="pi pi-calendar text-xs mr-1"></i>
-                                        {order.date}
+                    {pedidos.map((order) => (
+                        <div key={order.id} className="bg-white border-round-xl shadow-1 transition-all hover:shadow-3">
+                            <div className="p-3 border-bottom-1 surface-border bg-gray-50">
+                                <div className="flex justify-content-between align-items-start">
+                                    <div>
+                                        <span className="text-primary font-bold text-lg">Pedido #{order.id}</span>
+                                        <div className="text-900 font-medium mt-1">
+                                            Cliente: {order.customer?.first_name} {order.customer?.last_name}
+                                        </div>
+                                        <div className="text-600 text-sm mt-1">
+                                            <i className="pi pi-map-marker text-xs mr-1"></i>
+                                            {order.shipping_address_str || order.customer?.address?.street || 'Sin Dirección'}
+                                        </div>
+                                        <div className="text-600 text-sm">
+                                            <i className="pi pi-calendar text-xs mr-1"></i>
+                                            {order.date}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                            <div className="p-3">
+                                <h4 className="m-0 mb-3 text-700 font-medium text-sm text-uppercase">Lista de Productos</h4>
+                                <DataTable value={order.detail} size="small" showHeaders={true} className="p-datatable-sm vertical-align-middle">
+                                    <Column field="product_name" header="Nombre" className="font-medium text-900"></Column>
+                                    <Column
+                                        header="Cantidad"
+                                        body={(rowData) => quantityBody(rowData, order.id)}
+                                        style={{ width: '140px' }}
+                                        headerClassName="text-center"
+                                    />
+                                    <Column
+                                        header="Unidad"
+                                        body={(r) => <span className="text-sm bg-gray-100 border-round px-2 py-1 uppercase">{r.stock_unit === 'kg' ? 'Kilogramos' : 'Unidades'}</span>}
+                                        style={{ width: '100px' }}
+                                        className="text-center"
+                                        headerClassName="text-center"
+                                    />
+                                </DataTable>
+                            </div>
                         </div>
-                        <div className="p-3">
-                            <h4 className="m-0 mb-3 text-700 font-medium text-sm text-uppercase">Lista de Productos</h4>
-                            <DataTable value={order.detail} size="small" showHeaders={true} className="p-datatable-sm vertical-align-middle">
-                                <Column field="product_name" header="Nombre" className="font-medium text-900"></Column>
-                                <Column
-                                    header="Cantidad"
-                                    body={(rowData) => quantityBody(rowData, order.id)}
-                                    style={{ width: '140px' }}
-                                    headerClassName="text-center"
-                                />
-                                <Column
-                                    header="Unidad"
-                                    body={(r) => <span className="text-sm bg-gray-100 border-round px-2 py-1 uppercase">{r.stock_unit === 'kg' ? 'Kilogramos' : 'Unidades'}</span>}
-                                    style={{ width: '100px' }}
-                                    className="text-center"
-                                    headerClassName="text-center"
-                                />
-                            </DataTable>
-                        </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
 
             <div className="fixed bottom-0 left-0 w-full p-3 bg-white border-top-1 surface-border shadow-8 z-5 flex justify-content-end">
