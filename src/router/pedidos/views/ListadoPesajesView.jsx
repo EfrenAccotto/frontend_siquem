@@ -8,7 +8,6 @@ import { InputNumber } from 'primereact/inputnumber';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Toast } from 'primereact/toast';
-import { Message } from 'primereact/message';
 import { parseQuantityValue } from '@/utils/unitParser';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -25,6 +24,7 @@ const ListadoPesajesView = () => {
     const [error, setError] = useState(null);
     const [linkExpired, setLinkExpired] = useState(false);
     const [filtersInfo, setFiltersInfo] = useState({ fechaDesde: null, fechaHasta: null, estado: null });
+    const [productSummary, setProductSummary] = useState([]);
     const [feedback, setFeedback] = useState({ visible: false, status: 'success', message: '' });
     const toast = useRef(null);
 
@@ -39,6 +39,25 @@ const ListadoPesajesView = () => {
             ? 'Pesaje cargado correctamente'
             : 'Ocurrió un problema al cargar el pesaje';
         setFeedback({ visible: true, status, message: message || fallbackMessage });
+    };
+
+    const buildSummaryFromOrders = (orders = []) => {
+        const acc = {};
+        (orders || []).forEach((order) => {
+            const details = order?.detail || order?.detalle || order?.items || [];
+            details.forEach((item) => {
+                const productId = item.product_id || item.product?.id || item.producto?.id;
+                if (!productId) return;
+                const productName = item.product_name || item.product?.name || item.producto?.name || `Producto ${productId}`;
+                const unit = item.stock_unit || item.product?.stock_unit || item.producto?.stock_unit || 'unit';
+                const qty = Number(parseQuantityValue(item.quantity ?? item.cantidad ?? 0)) || 0;
+                if (!acc[productId]) {
+                    acc[productId] = { id: String(productId), product: productName, unit, quantity: 0 };
+                }
+                acc[productId].quantity += qty;
+            });
+        });
+        return Object.values(acc);
     };
 
     // Efecto principal para cargas datos (soporta uuid o legacy)
@@ -68,6 +87,15 @@ const ListadoPesajesView = () => {
                             estado: sharedData.state ?? sharedData.estado ?? null
                         });
                         setPedidos(mapped);
+                        const summaryObj = sharedData.summary && typeof sharedData.summary === 'object'
+                            ? Object.entries(sharedData.summary).map(([id, item]) => ({
+                                id: String(id),
+                                product: item?.product || `Producto ${id}`,
+                                unit: item?.unit || 'unit',
+                                quantity: Number(item?.quantity ?? 0)
+                            }))
+                            : [];
+                        setProductSummary(summaryObj.length ? summaryObj : buildSummaryFromOrders(mapped));
                     } else {
                         // Fallo al obtener (posible expirado o inválido)
                         setLinkExpired(true);
@@ -111,6 +139,7 @@ const ListadoPesajesView = () => {
                             }
                             const mapped = list.map(p => ({ ...p, detail: mapPedidoDetalle(p) }));
                             setPedidos(mapped);
+                            setProductSummary(buildSummaryFromOrders(mapped));
                         }
                     } catch (e) {
                         console.error(e);
@@ -295,6 +324,29 @@ const ListadoPesajesView = () => {
 
             <div>
                 <div className="p-3 flex flex-column gap-3 max-w-60rem mx-auto overflow-scroll" style={{ maxHeight: '85vh' }}>
+                    {productSummary.length > 0 && (
+                        <div className="bg-white border-round-xl shadow-1 p-3">
+                            <h4 className="m-0 mb-3 text-700 font-medium text-sm text-uppercase">Totales por Producto</h4>
+                            <DataTable value={productSummary} size="small" stripedRows>
+                                <Column field="product" header="Producto" />
+                                <Column
+                                    field="quantity"
+                                    header="Total"
+                                    body={(rowData) => {
+                                        const isKg = rowData.unit === 'kg' || rowData.unit === 'kilogramos';
+                                        const value = Number(rowData.quantity || 0);
+                                        return isKg ? value.toFixed(3) : Number.isInteger(value) ? value : value.toFixed(0);
+                                    }}
+                                />
+                                <Column
+                                    field="unit"
+                                    header="Unidad"
+                                    body={(rowData) => (rowData.unit === 'kg' ? 'Kilogramos' : 'Unidades')}
+                                />
+                            </DataTable>
+                        </div>
+                    )}
+
                     {pedidos.length === 0 && (
                         <div className="text-center p-5 text-500">No hay pedidos asignados.</div>
                     )}
@@ -316,6 +368,10 @@ const ListadoPesajesView = () => {
                                             <i className="pi pi-calendar text-xs mr-1"></i>
                                             {order.date}
                                         </div>
+                                        <div className="text-600 text-sm mt-1">
+                                            <i className="pi pi-comment text-xs mr-1"></i>
+                                            {String(order.observations || order.observaciones || '-').trim() || '-'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -335,6 +391,10 @@ const ListadoPesajesView = () => {
                                         style={{ width: '100px' }}
                                         className="text-center"
                                         headerClassName="text-center"
+                                    />
+                                    <Column
+                                        header="Observacion"
+                                        body={() => String(order.observations || order.observaciones || '-').trim() || '-'}
                                     />
                                 </DataTable>
                             </div>

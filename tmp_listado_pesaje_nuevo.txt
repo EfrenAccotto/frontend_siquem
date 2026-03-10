@@ -1,0 +1,30 @@
+RESPUESTA DEL BACKEND DE LISTADO DE PESAJES
+{ "count": 3, "start_date": "2026-02-18", "end_date": "2026-02-19", "state": "pending", "orders": [ { "id": 3, "shipping_address": { "id": 1, "street": "brochero", "number": "629", "floor": "", "apartment": "", "locality_name": "Rio Cuarto", "province_name": "Cordoba" }, "date": "2026-02-19", "state": "pending", "customer": { "id": 1, "first_name": "Benjamin", "last_name": "Sosa", "phone_number": "35867564375", "dni": "44827863", "address": { "id": 1, "street": "brochero", "number": "629", "floor": "", "apartment": "", "locality": { "id": 3, "name": "Rio Cuarto", "province": { "id": 1, "name": "Cordoba" } } }, "zona_info": { "id": 2, "name": "Centro" } },
+
+"detail": [ { "id": 4, "order": 3, "product": { "id": 2, "name": "Pollo", "price": "10000.00", "stock_unit": "kg" }, "quantity": "7.000" }
+] }, {
+"id": 2, "shipping_address": {
+"id": 2, "street": "Pje brochero", "number": "629", "floor": "", "apartment": "", "locality_name": "Rio Cuarto", "province_name": "Cordoba" }, "date": "2026-02-19", "state": "pending", "customer": { "id": 2, "first_name": "Jose", "last_name": "Lopez", "phone_number": "+543585162235", "dni": "44827866", "address": {
+"id": 2, "street": "Pje brochero", "number": "629", "floor": "", "apartment": "", "locality": {
+"id": 3, "name": "Rio Cuarto", "province": {
+"id": 1, "name": "Cordoba" } } },
+
+"zona_info": { "id": 2, "name": "Centro"
+} }, "detail": [
+{ "id": 2, "order": 2, "product": { "id": 2, "name": "Pollo", "price": "10000.00", "stock_unit": "kg" }, "quantity": "8.000"
+}, {
+"id": 3, "order": 2, "product": {
+"id": 1, "name": "Huevos", "price": "6800.00", "stock_unit": "unit" }, "quantity": "4.000" } ] }, { "id": 1, "shipping_address": { "id": 1, "street": "brochero", "number": "629", "floor": "", "apartment": "", "locality_name": "Rio Cuarto", "province_name": "Cordoba" }, "date": "2026-02-18", "state": "pending", "customer": { "id": 1, "first_name": "Benjamin", "last_name": "Sosa", "phone_number": "35867564375",
+
+"dni": "44827863", "address": {
+"id": 1, "street": "brochero", "number": "629", "floor": "", "apartment": "", "locality": {
+"id": 3, "name": "Rio Cuarto", "province": {
+"id": 1, "name": "Cordoba" } } }, "zona_info": { "id": 2, "name": "Centro" } }, "detail": [ { "id": 1, "order": 1, "product": { "id": 1, "name": "Huevos", "price": "6800.00", "stock_unit": "unit" }, "quantity": "10.000" } ] } ], "summary": { "2": { "product": "Pollo", "unit": "kg", "quantity": 15.0 }, "1": { "product": "Huevos", "unit": "unit", "quantity": 14.0 } }
+
+}  
+Lo nuevo que devuelve ahora el pedido es lo siguiente:
+ "summary": { "2": { "product": "Pollo", "unit": "kg", "quantity": 15.0 }, "1": { "product": "Huevos", "unit": "unit", "quantity": 14.0 } }
+}
+Son todos los productos del Listado de Pesaje generado sumados.
+
+
