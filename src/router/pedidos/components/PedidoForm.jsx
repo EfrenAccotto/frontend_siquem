@@ -15,6 +15,7 @@ import UbicacionService from '@/router/ubicacion/services/UbicacionService';
 import ClienteService from '@/router/clientes/services/ClienteService';
 import ClienteForm from '@/router/clientes/components/ClienteForm';
 import { formatQuantityFromSource, extractStockUnit, parseQuantityValue } from '@/utils/unitParser';
+import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHOD, normalizePaymentMethod } from '@/utils/paymentMethod';
 
 // Estados base permitidos en el formulario
 const estadoOptionsBase = [
@@ -42,6 +43,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     observaciones: '',
     fechaPedido: new Date(),
     estado: 'pending',
+    formaPago: DEFAULT_PAYMENT_METHOD,
     items: [],
     usarEnvioPersonalizado: false,
     envioLocalidad: null,
@@ -185,6 +187,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           observaciones: pedido.observations || pedido.observaciones || '',
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
+          formaPago: normalizePaymentMethod(pedido.payment_method || pedido.paymentMethod),
           items: items,
           usarEnvioPersonalizado: false,
           envioLocalidad: null,
@@ -198,6 +201,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           observaciones: '',
           fechaPedido: new Date(),
           estado: 'pending',
+          formaPago: DEFAULT_PAYMENT_METHOD,
           items: [],
           usarEnvioPersonalizado: false,
           envioLocalidad: null,
@@ -339,6 +343,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       observations: observacionesConEnvio,
       date: formData.fechaPedido?.toISOString?.().slice(0, 10) || formData.fechaPedido,
       state: formData.estado || 'pending',
+      payment_method: normalizePaymentMethod(formData.formaPago),
       shipping_address_id: shippingAddressId,
       detail: detailItems
     };
@@ -494,7 +499,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           </div>
         </div>
 
-        <div className="col-12 md:col-6">
+        <div className="col-12 md:col-4">
           <div className="field">
             <label className="font-bold">Fecha del Pedido</label>
             <Calendar
@@ -507,7 +512,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           </div>
         </div>
 
-        <div className="col-12 md:col-6">
+        <div className="col-12 md:col-4">
           <div className="field">
             <label className="font-bold">Estado</label>
             {pedido && formData.estado === 'completed' ? (
@@ -527,6 +532,18 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                 Los pedidos completados no pueden editarse. 
               </small>
             )}
+          </div>
+        </div>
+
+        <div className="col-12 md:col-4">
+          <div className="field">
+            <label className="font-bold">Forma de Pago *</label>
+            <Dropdown
+              value={formData.formaPago}
+              options={PAYMENT_METHOD_OPTIONS}
+              onChange={(e) => setFormData((prev) => ({ ...prev, formaPago: normalizePaymentMethod(e.value) }))}
+              placeholder="Seleccione forma de pago"
+            />
           </div>
         </div>
 

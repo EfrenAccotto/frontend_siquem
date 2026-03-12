@@ -60,6 +60,47 @@ const ListadoPesajesView = () => {
         return Object.values(acc);
     };
 
+    const buildUnitMapFromOrders = (orders = []) => {
+        const unitByProduct = {};
+        (orders || []).forEach((order) => {
+            const details = order?.detail || order?.detalle || order?.items || [];
+            details.forEach((item) => {
+                const productName = item.product_name || item.product?.name || item.producto?.name;
+                if (!productName) return;
+                const unit = item.stock_unit || item.product?.stock_unit || item.producto?.stock_unit;
+                if (unit && !unitByProduct[productName]) {
+                    unitByProduct[productName] = unit;
+                }
+            });
+        });
+        return unitByProduct;
+    };
+
+    const buildSummaryFromTotals = (totals, orders = []) => {
+        if (!Array.isArray(totals) || totals.length === 0) return [];
+        const unitByProduct = buildUnitMapFromOrders(orders);
+        return totals
+            .map((entry, idx) => {
+                if (typeof entry !== 'string') return null;
+                const parts = entry.split(':');
+                if (parts.length < 2) return null;
+                const product = (parts[0] || '').trim();
+                const quantityRaw = parts.slice(1).join(':').trim();
+                const firstNumber = String(quantityRaw).match(/-?\d+(?:[.,]\d+)?/);
+                const normalizedQty = firstNumber
+                    ? firstNumber[0].replace(',', '.')
+                    : String(quantityRaw).replace(',', '.');
+                const quantity = Number(normalizedQty);
+                return {
+                    id: `${product}-${idx}`,
+                    product: product || `Producto ${idx + 1}`,
+                    unit: unitByProduct[product] || 'unit',
+                    quantity: Number.isFinite(quantity) ? quantity : 0
+                };
+            })
+            .filter(Boolean);
+    };
+
     // Efecto principal para cargas datos (soporta uuid o legacy)
     useEffect(() => {
         let mounted = true;
@@ -87,6 +128,7 @@ const ListadoPesajesView = () => {
                             estado: sharedData.state ?? sharedData.estado ?? null
                         });
                         setPedidos(mapped);
+                        const summaryFromTotals = buildSummaryFromTotals(sharedData.totals, mapped);
                         const summaryObj = sharedData.summary && typeof sharedData.summary === 'object'
                             ? Object.entries(sharedData.summary).map(([id, item]) => ({
                                 id: String(id),
@@ -95,7 +137,11 @@ const ListadoPesajesView = () => {
                                 quantity: Number(item?.quantity ?? 0)
                             }))
                             : [];
-                        setProductSummary(summaryObj.length ? summaryObj : buildSummaryFromOrders(mapped));
+                        setProductSummary(
+                            summaryFromTotals.length
+                                ? summaryFromTotals
+                                : (summaryObj.length ? summaryObj : buildSummaryFromOrders(mapped))
+                        );
                     } else {
                         // Fallo al obtener (posible expirado o inválido)
                         setLinkExpired(true);
