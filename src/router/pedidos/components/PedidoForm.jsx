@@ -12,7 +12,10 @@ import { useEffect, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import UbicacionService from '@/router/ubicacion/services/UbicacionService';
+import ClienteService from '@/router/clientes/services/ClienteService';
+import ClienteForm from '@/router/clientes/components/ClienteForm';
 import { formatQuantityFromSource, extractStockUnit, parseQuantityValue } from '@/utils/unitParser';
+import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHOD, normalizePaymentMethod } from '@/utils/paymentMethod';
 
 // Estados base permitidos en el formulario
 const estadoOptionsBase = [
@@ -40,6 +43,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     observaciones: '',
     fechaPedido: new Date(),
     estado: 'pending',
+    formaPago: DEFAULT_PAYMENT_METHOD,
     items: [],
     usarEnvioPersonalizado: false,
     envioLocalidad: null,
@@ -54,6 +58,9 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const [localidades, setLocalidades] = useState([]);
   const [zonas, setZonas] = useState([]);
   const [direccionErrors, setDireccionErrors] = useState({});
+  const [showClienteDialog, setShowClienteDialog] = useState(false);
+  const [savingCliente, setSavingCliente] = useState(false);
+  const [clienteInlineError, setClienteInlineError] = useState('');
   const isPedidoCompleted = !!pedido && ['completed', 'completado'].includes(
     String(pedido?.state || pedido?.estado || formData?.estado || '').toLowerCase()
   );
@@ -180,6 +187,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           observaciones: pedido.observations || pedido.observaciones || '',
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
+          formaPago: normalizePaymentMethod(pedido.payment_method || pedido.paymentMethod),
           items: items,
           usarEnvioPersonalizado: false,
           envioLocalidad: null,
@@ -193,6 +201,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           observaciones: '',
           fechaPedido: new Date(),
           estado: 'pending',
+          formaPago: DEFAULT_PAYMENT_METHOD,
           items: [],
           usarEnvioPersonalizado: false,
           envioLocalidad: null,
@@ -334,6 +343,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       observations: observacionesConEnvio,
       date: formData.fechaPedido?.toISOString?.().slice(0, 10) || formData.fechaPedido,
       state: formData.estado || 'pending',
+      payment_method: normalizePaymentMethod(formData.formaPago),
       shipping_address_id: shippingAddressId,
       detail: detailItems
     };
@@ -344,6 +354,32 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     onSave(payload, {
       shipping_address_override: formData.usarEnvioPersonalizado ? direccionEntrega : null
     });
+  };
+
+  const handleCrearClienteDesdePedido = async (clientePayload) => {
+    setSavingCliente(true);
+    setClienteInlineError('');
+    try {
+      const response = await ClienteService.create(clientePayload);
+      if (!response?.success) {
+        const err = typeof response?.error === 'string' ? response.error : 'No se pudo crear el cliente';
+        throw new Error(err);
+      }
+
+      await fetchClientes();
+      const clientesActualizados = useClienteStore.getState()?.clientes || [];
+      const clienteCreado = clientesActualizados.find((c) => c.id === response?.data?.id) || response?.data;
+
+      setFormData((prev) => ({
+        ...prev,
+        cliente: clienteCreado || prev.cliente
+      }));
+      setShowClienteDialog(false);
+    } catch (error) {
+      setClienteInlineError(error?.message || 'No se pudo crear el cliente');
+    } finally {
+      setSavingCliente(false);
+    }
   };
 
   const handleAddItem = () => {
@@ -429,11 +465,23 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       <div className="grid">
         <div className="col-12">
           <div className="field">
-            <label className="font-bold">Cliente *</label>
+            <div className="flex justify-content-between align-items-center mb-2">
+              <label className="font-bold m-0">Cliente *</label>
+              <Button
+                type="button"
+                label="Nuevo cliente"
+                icon="pi pi-user-plus"
+                className="p-button-sm p-button-outlined"
+                onClick={() => setShowClienteDialog(true)}
+              />
+            </div>
             <Dropdown
               value={formData.cliente}
               options={clientes}
-              onChange={(e) => setFormData((prev) => ({ ...prev, cliente: e.value }))}
+              onChange={(e) => {
+                setFormData((prev) => ({ ...prev, cliente: e.value }));
+                setClienteInlineError('');
+              }}
               optionLabel={clienteLabel}
               placeholder="Seleccione un cliente"
               filter
@@ -445,10 +493,13 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                 ? `${formData.cliente.address.street || ''} ${formData.cliente.address.number || ''} (${formData.cliente.address.locality?.name || ''}, ${formData.cliente.address.locality?.province?.name || ''})`
                 : 'El cliente no tiene dirección; puedes asignarla desde Clientes.'}
             </small>
+            {clienteInlineError && (
+              <small className="p-error block mt-1">{clienteInlineError}</small>
+            )}
           </div>
         </div>
 
-        <div className="col-12 md:col-6">
+        <div className="col-12 md:col-4">
           <div className="field">
             <label className="font-bold">Fecha del Pedido</label>
             <Calendar
@@ -461,7 +512,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           </div>
         </div>
 
-        <div className="col-12 md:col-6">
+        <div className="col-12 md:col-4">
           <div className="field">
             <label className="font-bold">Estado</label>
             {pedido && formData.estado === 'completed' ? (
@@ -481,6 +532,18 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                 Los pedidos completados no pueden editarse. 
               </small>
             )}
+          </div>
+        </div>
+
+        <div className="col-12 md:col-4">
+          <div className="field">
+            <label className="font-bold">Forma de Pago *</label>
+            <Dropdown
+              value={formData.formaPago}
+              options={PAYMENT_METHOD_OPTIONS}
+              onChange={(e) => setFormData((prev) => ({ ...prev, formaPago: normalizePaymentMethod(e.value) }))}
+              placeholder="Seleccione forma de pago"
+            />
           </div>
         </div>
 
@@ -657,6 +720,17 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           )}
         </div>
       </div>
+
+      <ClienteForm
+        visible={showClienteDialog}
+        cliente={null}
+        onHide={() => {
+          setShowClienteDialog(false);
+          setClienteInlineError('');
+        }}
+        onSave={handleCrearClienteDesdePedido}
+        loading={savingCliente}
+      />
     </Dialog>
   );
 };

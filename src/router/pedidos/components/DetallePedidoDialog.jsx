@@ -4,6 +4,7 @@ import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { ProgressSpinner } from 'primereact/progressspinner';
 import { formatQuantityFromSource, extractStockUnit } from '@/utils/unitParser';
+import { formatPaymentMethod } from '@/utils/paymentMethod';
 
 const formatAddress = (addr) => {
   if (!addr) return '-';
@@ -51,6 +52,8 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
   const direccionEnvio = pedido?.shipping_address_str
     || formatAddress(pedido?.shipping_address || pedido?.customer?.address);
   const observaciones = pedido?.observations || pedido?.observaciones || '-';
+  const formaPagoRaw = pedido?.payment_method || pedido?.paymentMethod;
+  const formaPago = formaPagoRaw ? formatPaymentMethod(formaPagoRaw) : '-';
   const estadoRaw = pedido?.state || pedido?.estado || '-';
   const estado = STATUS_MAP[estadoRaw] || estadoRaw || '-';
   const fecha = pedido?.date || pedido?.fechaPedido || '-';
@@ -141,19 +144,25 @@ const DetallePedidoDialog = ({ visible, pedido, onHide, loading = false }) => {
                 <div className="text-lg">{direccionEnvio || '-'}</div>
               </div>
             </div>
-            <div className="col-12 md:col-4">
+            <div className="col-12 md:col-3">
               <div className="field">
                 <label className="font-bold">Fecha del Pedido</label>
                 <div className="text-lg">{fecha || '-'}</div>
               </div>
             </div>
-            <div className="col-12 md:col-4">
+            <div className="col-12 md:col-3">
               <div className="field">
                 <label className="font-bold">Estado</label>
                 <div className="text-lg text-capitalize">{estado}</div>
               </div>
             </div>
-            <div className="col-12 md:col-4">
+            <div className="col-12 md:col-3">
+              <div className="field">
+                <label className="font-bold">Forma de Pago</label>
+                <div className="text-lg">{formaPago}</div>
+              </div>
+            </div>
+            <div className="col-12 md:col-3">
               <div className="field">
                 <label className="font-bold">Total Items</label>
                 <div className="text-lg">{detalles.length}</div>

@@ -15,7 +15,7 @@ import VentaForm from '@/router/ventas/components/VentaForm';
 import VentaService from '@/router/ventas/services/VentaService';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { extractStockUnit } from '@/utils/unitParser';
-import { normalizePaymentMethod } from '@/utils/paymentMethod';
+import { normalizePaymentMethod, formatPaymentMethod } from '@/utils/paymentMethod';
 
 // Estados soportados por backend
 const STATUS_MAP = {
@@ -669,6 +669,11 @@ const PedidoView = () => {
     return <span className={`p-badge ${className}`}>{label}</span>;
   };
 
+  const observacionesTemplate = (rowData) => {
+    const value = rowData.observations || rowData.observaciones || '-';
+    return String(value).trim() || '-';
+  };
+
   const columns = [
     { field: 'id', header: 'ID', style: { width: '8%' } },
     {
@@ -682,16 +687,60 @@ const PedidoView = () => {
       field: 'shipping_address',
       header: 'Direccion de Envio',
       body: direccionTemplate,
-      style: { width: '27%' }
+      style: { width: '24%' }
     },
-    { field: 'date', header: 'Fecha Pedido', style: { width: '15%' } },
+    {
+      field: 'observations',
+      header: 'Observacion',
+      body: observacionesTemplate,
+      style: { width: '18%' }
+    },
+    { field: 'date', header: 'Fecha Pedido', style: { width: '13%' } },
     {
       field: 'state',
       header: 'Estado',
       body: estadoTemplate,
-      style: { width: '15%' }
+      style: { width: '12%' }
     }
   ];
+
+  const toDateKey = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') return value.slice(0, 10);
+    try {
+      return value.toISOString().slice(0, 10);
+    } catch {
+      return null;
+    }
+  };
+
+  const getPedidoTotal = (pedidoItem) => {
+    const totalRaw = pedidoItem?.total_price ?? pedidoItem?.total;
+    const totalNum = Number(totalRaw);
+    if (Number.isFinite(totalNum) && totalNum > 0) return totalNum;
+
+    const detailList = pedidoItem?.detail || pedidoItem?.detalles || pedidoItem?.items || [];
+    return (detailList || []).reduce((acc, d) => {
+      const qty = Number(d.quantity ?? d.cantidad ?? 0) || 0;
+      const price = Number(d.product_price ?? d.price ?? d.product?.price ?? d.producto?.price ?? 0) || 0;
+      const subtotal = Number(d.subtotal);
+      return acc + (Number.isFinite(subtotal) ? subtotal : (qty * price));
+    }, 0);
+  };
+
+  const dateFromHojaKey = toDateKey(fechaDesdeHoja);
+  const dateToHojaKey = toDateKey(fechaHastaHoja);
+  const pedidosHojaRuta = (pedidos || []).filter((p) => {
+    if (estadoHojaRuta && p.state !== estadoHojaRuta) return false;
+    const pedidoDate = toDateKey(p.date);
+    if (!pedidoDate) return true;
+    if (dateFromHojaKey && pedidoDate < dateFromHojaKey) return false;
+    if (dateToHojaKey && pedidoDate > dateToHojaKey) return false;
+    return true;
+  });
+  const totalGeneralHojaRuta = pedidosHojaRuta.reduce((acc, p) => acc + getPedidoTotal(p), 0);
+  const formatCurrency = (value) =>
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
   return (
     <div className="pedido-view h-full">
@@ -847,7 +896,7 @@ const PedidoView = () => {
         visible={showHojaRutaDialog}
         onHide={() => setShowHojaRutaDialog(false)}
         header="Generar hoja de ruta por zonas"
-        style={{ width: '400px' }}
+        style={{ width: '650px' }}
         footer={
           <div className="flex justify-content-end gap-2">
             <Button label="Cancelar" className="p-button-text" onClick={() => setShowHojaRutaDialog(false)} disabled={loadingHojaRuta} />
@@ -900,6 +949,30 @@ const PedidoView = () => {
           </div>
           <div className="col-12">
             <small className="text-500 block mt-1">Si no eliges filtros, se generarán todos los pedidos agrupados por zona.</small>
+          </div>
+          <div className="col-12">
+            <div className="p-3 surface-100 border-round">
+              <div className="flex justify-content-between align-items-center mb-2">
+                <span className="font-bold">Pedidos incluidos: {pedidosHojaRuta.length}</span>
+                <span className="font-bold">Total general: {formatCurrency(totalGeneralHojaRuta)}</span>
+              </div>
+              <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+                {(pedidosHojaRuta || []).map((p) => {
+                  const paymentRaw = p.payment_method || p.paymentMethod;
+                  const paymentLabel = paymentRaw ? formatPaymentMethod(paymentRaw) : '-';
+                  return (
+                    <div key={`hoja-ruta-${p.id}`} className="flex justify-content-between align-items-center py-2 border-bottom-1 surface-border">
+                      <span>Pedido #{p.id}</span>
+                      <span>{paymentLabel}</span>
+                      <span>{formatCurrency(getPedidoTotal(p))}</span>
+                    </div>
+                  );
+                })}
+                {!pedidosHojaRuta.length && (
+                  <small className="text-500">No hay pedidos para los filtros seleccionados.</small>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </Dialog>
@@ -956,3 +1029,4 @@ const PedidoView = () => {
 };
 
 export default PedidoView;
+
