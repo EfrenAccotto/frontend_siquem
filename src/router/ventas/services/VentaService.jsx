@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { fetchAllPages } from '@/utils/fetchAllPages';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const VENTAS_ENDPOINT = `${BASE_URL}/sale`;
@@ -8,27 +9,10 @@ class VentaService {
   static async getAll(params = {}) {
     const baseUrl = `${VENTAS_ENDPOINT}/`;
     const query = { ordering: '-id', ...params };
+
     try {
-      let url = baseUrl;
-      let first = true;
-      let all = [];
-      let pagination = {};
-      while (url) {
-        const resp = await axios.get(url, { params: first ? query : undefined });
-        const data = resp.data;
-        const chunk = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
-        all = all.concat(chunk);
-        pagination = { count: data?.count, next: data?.next, previous: data?.previous };
-        url = data?.next;
-        first = false;
-      }
-      if (!all.length) {
-        const resp = await axios.get(baseUrl, { params: query });
-        const data = resp.data;
-        all = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
-        pagination = { count: data?.count, next: data?.next, previous: data?.previous };
-      }
-      return { success: true, data: all, pagination, status: 200 };
+      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      return { success: true, data, pagination, status };
     } catch (error) {
       return { success: false, error: error.response?.data || 'Error al obtener ventas', status: error.response?.status || 500 };
     }

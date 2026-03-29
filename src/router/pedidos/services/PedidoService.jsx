@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { fetchAllPages } from '@/utils/fetchAllPages';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const PEDIDOS_ENDPOINT = `${BASE_URL}/order`;
@@ -7,27 +8,10 @@ class PedidoService {
   static async getAll(params = {}) {
     const baseUrl = `${PEDIDOS_ENDPOINT}/`;
     const query = { ordering: '-id', ...params };
+
     try {
-      let url = baseUrl;
-      let first = true;
-      let all = [];
-      let pagination = {};
-      while (url) {
-        const resp = await axios.get(url, { params: first ? query : undefined });
-        const data = resp.data;
-        const chunk = Array.isArray(data?.results) ? data.results : (Array.isArray(data) ? data : []);
-        all = all.concat(chunk);
-        pagination = { count: data?.count, next: data?.next, previous: data?.previous };
-        url = data?.next;
-        first = false;
-      }
-      if (!all.length) {
-        const resp = await axios.get(baseUrl, { params: query });
-        const data = resp.data;
-        all = Array.isArray(data) ? data : (Array.isArray(data?.results) ? data.results : []);
-        pagination = { count: data?.count, next: data?.next, previous: data?.previous };
-      }
-      return { success: true, data: all, pagination, status: 200 };
+      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      return { success: true, data, pagination, status };
     } catch (error) {
       return {
         success: false,
@@ -51,7 +35,6 @@ class PedidoService {
   }
 
   static async create(pedidoData) {
-    console.log('Creating pedido with data:', pedidoData);
     try {
       const response = await axios.post(`${PEDIDOS_ENDPOINT}/`, pedidoData);
       return { success: true, data: response.data, status: response.status };
@@ -90,8 +73,6 @@ class PedidoService {
     }
   }
 
-  // --- Shared / Pesaje Links ---
-
   static async generateShareLink(payload) {
     try {
       const response = await axios.post(`${PEDIDOS_ENDPOINT}/export/share/`, payload);
@@ -107,7 +88,6 @@ class PedidoService {
 
   static async getSharedOrders(shareId) {
     try {
-      // El endpoint retornará la data filtrada asociada a ese share_id
       const response = await axios.get(`${PEDIDOS_ENDPOINT}/shared/orders/${shareId}/`);
       return { success: true, data: response.data, status: response.status };
     } catch (error) {
@@ -121,7 +101,6 @@ class PedidoService {
 
   static async updateSharedOrders(shareId, payload) {
     try {
-      // PUT a la misma URL del share ID para guardar cambios en lote
       const response = await axios.put(`${PEDIDOS_ENDPOINT}/shared/orders/${shareId}/`, payload);
       return { success: true, data: response.data, status: response.status };
     } catch (error) {

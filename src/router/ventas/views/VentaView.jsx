@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { Toast } from 'primereact/toast';
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
@@ -7,6 +7,31 @@ import PedidoService from '@/router/pedidos/services/PedidoService';
 import VentaForm from '../components/VentaForm';
 import DetalleVentaDialog from '../components/DetalleVentaDialog';
 import { confirmDialog } from 'primereact/confirmdialog';
+
+const sortByIdDesc = (items = []) =>
+  [...items].sort((a, b) => (b?.id || 0) - (a?.id || 0));
+
+const formatAddress = (addr) => {
+  if (!addr) return null;
+  const locality = addr.locality_name || addr.locality?.name || '';
+  const province = addr.province_name || addr.locality?.province?.name || '';
+  const loc = [locality, province].filter(Boolean).join(', ');
+  const streetNum = `${addr.street || ''} ${addr.number || ''}`.trim();
+  const extra = [addr.floor, addr.apartment].filter(Boolean).join(' ');
+  const main = [streetNum, loc ? `(${loc})` : ''].filter(Boolean).join(' ');
+  return [main, extra].filter(Boolean).join(' ').trim() || null;
+};
+
+const enrichVenta = (venta = {}, totalFallback = null) => {
+  const addr = venta.shipping_address || venta.order?.shipping_address || venta.order?.customer?.address;
+  return {
+    ...venta,
+    shipping_address_str: venta.shipping_address_str || formatAddress(addr),
+    total_price: venta.total_price ?? totalFallback ?? 0
+  };
+};
+
+const enrichVentaList = (list = []) => sortByIdDesc(list).map((venta) => enrichVenta(venta));
 
 const VentaView = () => {
   const toast = useRef(null);
@@ -30,13 +55,7 @@ const VentaView = () => {
 
         if (response.success) {
           const list = response.data.results || response.data || [];
-          const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
-          const enhanced = sorted.map((v) => {
-            if (v.shipping_address || v.shipping_address_str) return v;
-            const addr = v.order?.shipping_address || v.order?.customer?.address;
-            return { ...v, shipping_address_str: formatAddress(addr) };
-          });
-          setVentas(enhanced);
+          setVentas(Array.isArray(list) ? enrichVentaList(list) : []);
         } else {
           console.error('Error al obtener ventas:', response.error);
           toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar ventas', life: 3000 });
@@ -63,17 +82,6 @@ const VentaView = () => {
   const handleNuevo = () => {
     setVentaEditando(null);
     setShowDialog(true);
-  };
-
-  const formatAddress = (addr) => {
-    if (!addr) return null;
-    const locality = addr.locality_name || addr.locality?.name || '';
-    const province = addr.province_name || addr.locality?.province?.name || '';
-    const loc = [locality, province].filter(Boolean).join(', ');
-    const streetNum = `${addr.street || ''} ${addr.number || ''}`.trim();
-    const extra = [addr.floor, addr.apartment].filter(Boolean).join(' ');
-    const main = [streetNum, loc ? `(${loc})` : ''].filter(Boolean).join(' ');
-    return [main, extra].filter(Boolean).join(' ').trim() || null;
   };
 
   const handleEditar = async () => {
@@ -171,35 +179,13 @@ const VentaView = () => {
 
         // Refrescar venta puntual y lista para asegurar consistencia
         const single = await VentaService.getById(ventaEditando.id);
-        if (single.success) {
-          setVentas((prev) => {
-            const filtered = (prev || []).filter((v) => v.id !== ventaEditando.id);
-            const enriched = {
-              ...single.data,
-              shipping_address_str: formatAddress(
-                single.data.shipping_address || single.data.shipping_address_str || single.data.order?.shipping_address || single.data.order?.customer?.address
-              ),
-              total_price: single.data?.total_price ?? totalNormalized
-            };
-            const next = [enriched, ...filtered];
-            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
-          });
-        } else {
-          const refetch = await VentaService.getAll();
-          if (refetch.success) {
-            const list = refetch.data?.results || refetch.data || [];
-            const enhanced = Array.isArray(list)
-              ? list.map((v) => ({
-                  ...v,
-                  shipping_address_str: formatAddress(
-                    v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
-                ),
-                total_price: v.total_price ?? totalNormalized
-              }))
-              : [];
-            setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
-          }
-        }
+        const resolvedVenta = single.success
+          ? enrichVenta(single.data, totalNormalized)
+          : enrichVenta({ ...ventaEditando, ...response.data, ...salePayload }, totalNormalized);
+        setVentas((prev) => {
+          const filtered = (prev || []).filter((v) => v.id !== ventaEditando.id);
+          return sortByIdDesc([resolvedVenta, ...filtered]);
+        });
 
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta actualizada', life: 3000 });
       } else {
@@ -240,35 +226,13 @@ const VentaView = () => {
 
         // Refrescar desde backend para asegurar que la venta y detalles aparezcan en tabla
         const single = saleId ? await VentaService.getById(saleId) : null;
-        if (single?.success) {
-          setVentas((prev) => {
-            const filtered = (prev || []).filter((v) => v.id !== saleId);
-            const enriched = {
-              ...single.data,
-              shipping_address_str: formatAddress(
-                single.data.shipping_address || single.data.shipping_address_str || single.data.order?.shipping_address || single.data.order?.customer?.address
-              ),
-              total_price: single.data?.total_price ?? totalNormalized ?? salePayload.total_price
-            };
-            const next = [enriched, ...filtered];
-            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
-          });
-        } else {
-          const refetch = await VentaService.getAll();
-          if (refetch.success) {
-            const list = refetch?.data?.results || refetch?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
-              const enhanced = list.map((v) => ({
-                ...v,
-                shipping_address_str: formatAddress(
-                  v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
-                ),
-                total_price: v.total_price ?? totalNormalized ?? salePayload.total_price
-              }));
-              setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
-            }
-          }
-        }
+        const resolvedVenta = single?.success
+          ? enrichVenta(single.data, totalNormalized ?? salePayload.total_price)
+          : enrichVenta({ ...response.data, ...salePayload, id: saleId }, totalNormalized ?? salePayload.total_price);
+        setVentas((prev) => {
+          const filtered = (prev || []).filter((v) => v.id !== saleId);
+          return sortByIdDesc([resolvedVenta, ...filtered]);
+        });
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta creada correctamente', life: 3000 });
       }
 
@@ -286,22 +250,8 @@ const VentaView = () => {
     try {
       const response = await VentaService.delete(selectedVenta.id);
       if (response.success) {
-        setVentas((prev) => prev.filter(v => v.id !== selectedVenta.id));
+        setVentas((prev) => prev.filter((v) => v.id !== selectedVenta.id));
         setSelectedVenta(null);
-        VentaService.getAll()
-          .then((refetch) => {
-            const list = refetch?.data?.results || refetch?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
-              const enhanced = list.map((v) => ({
-                ...v,
-                shipping_address_str: formatAddress(
-                  v.shipping_address || v.shipping_address_str || v.order?.shipping_address || v.order?.customer?.address
-                )
-              }));
-              setVentas(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
-            }
-          })
-          .catch(() => { /* mantener lista local si falla */ });
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta eliminada', life: 3000 });
       } else {
         throw new Error(response.error);
@@ -322,25 +272,30 @@ const VentaView = () => {
     });
   };
 
-  const filteredVentas = Array.isArray(ventas)
-    ? ventas.filter((v) => {
-        const term = search.toLowerCase().trim();
-        if (!term) return true;
-        const addrText = v.shipping_address_str
-          || (v.shipping_address && formatAddress(v.shipping_address))
-          || (v.order?.shipping_address && formatAddress(v.order.shipping_address))
-          || '';
-        return (
-          (v.order_id || v.order?.id || '').toString().toLowerCase().includes(term) ||
-          (v.date || '').toString().toLowerCase().includes(term) ||
-          (v.total_price || '').toString().toLowerCase().includes(term) ||
-          (v.customer_name || '').toLowerCase().includes(term) ||
-          addrText.toLowerCase().includes(term)
-        );
-      })
-    : [];
+  const filteredVentas = useMemo(
+    () => (
+      Array.isArray(ventas)
+        ? ventas.filter((v) => {
+            const term = search.toLowerCase().trim();
+            if (!term) return true;
+            const addrText = v.shipping_address_str
+              || (v.shipping_address && formatAddress(v.shipping_address))
+              || (v.order?.shipping_address && formatAddress(v.order.shipping_address))
+              || '';
+            return (
+              (v.order_id || v.order?.id || '').toString().toLowerCase().includes(term) ||
+              (v.date || '').toString().toLowerCase().includes(term) ||
+              (v.total_price || '').toString().toLowerCase().includes(term) ||
+              (v.customer_name || '').toLowerCase().includes(term) ||
+              addrText.toLowerCase().includes(term)
+            );
+          })
+        : []
+    ),
+    [ventas, search]
+  );
 
-  const columns = [
+  const columns = useMemo(() => [
     { field: 'id', header: 'ID', style: { width: '10%' } },
     {
       field: 'order_id',
@@ -371,7 +326,7 @@ const VentaView = () => {
       style: { width: '16%' },
       body: (rowData) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(rowData.total_price || 0)
     }
-  ];
+  ], []);
 
   return (
     <div className="venta-view h-full">

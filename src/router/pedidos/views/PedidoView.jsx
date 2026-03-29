@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { Toast } from 'primereact/toast';
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
@@ -42,6 +42,109 @@ const buildPedidoParams = (filters) => {
   if (filters?.search?.trim()) params.search = filters.search.trim();
   return params;
 };
+
+const sortByIdDesc = (items = []) =>
+  [...items].sort((a, b) => (b?.id || 0) - (a?.id || 0));
+
+const formatAddress = (addr) => {
+  if (!addr) return null;
+  const locality = addr.locality_name || addr.locality?.name || '';
+  const province = addr.province_name || addr.locality?.province?.name || '';
+  const loc = [locality, province].filter(Boolean).join(', ');
+  const streetNum = `${addr.street || ''} ${addr.number || ''}`.trim();
+  const extra = [addr.floor, addr.apartment].filter(Boolean).join(' ');
+  const main = [streetNum, loc ? `(${loc})` : ''].filter(Boolean).join(' ');
+  return [main, extra].filter(Boolean).join(' ').trim() || null;
+};
+
+const extractShippingFromObservations = (obs) => {
+  if (!obs) return null;
+  const lines = String(obs).split('\n');
+  const entregaLine = lines.find((line) => line.toLowerCase().startsWith('entrega:'));
+  if (!entregaLine) return null;
+  return entregaLine.replace(/entrega:\s*/i, '').trim() || null;
+};
+
+const enrichPedido = (pedido = {}, shippingOverride = null) => {
+  const addr = pedido.shipping_address || pedido.customer?.address;
+  const shippingObs = extractShippingFromObservations(pedido.observations || pedido.observaciones);
+
+  return {
+    ...pedido,
+    shipping_address_str: shippingOverride || pedido.shipping_address_str || formatAddress(addr) || shippingObs,
+    shipping_obs: pedido.shipping_obs || shippingObs
+  };
+};
+
+const enrichPedidoList = (list = []) => sortByIdDesc(list).map((pedido) => enrichPedido(pedido));
+
+const mapPedidoDetalle = (pedidoData = {}) => {
+  const detalles =
+    (Array.isArray(pedidoData.detail) && pedidoData.detail) ||
+    (Array.isArray(pedidoData.detalle) && pedidoData.detalle) ||
+    (Array.isArray(pedidoData.detalles) && pedidoData.detalles) ||
+    (Array.isArray(pedidoData.items) && pedidoData.items) ||
+    [];
+
+  const mapped = detalles.map((d) => {
+    const productId = d.product_id ?? d.product?.id ?? d.producto?.id ?? d.producto_id;
+    const productName = d.product_name || d.product?.name || d.producto?.name || (productId ? `Producto ${productId}` : 'Producto');
+    const qty = d.quantity ?? d.cantidad ?? 1;
+    const price = d.product_price ?? d.price ?? d.precio ?? d.product?.price ?? d.producto?.price ?? 0;
+    const unit = extractStockUnit(d);
+    const resolvedProduct = d.product || d.producto || (productId ? { id: productId, name: productName, price } : null);
+    const productoConUnidad = resolvedProduct
+      ? { ...resolvedProduct, stock_unit: resolvedProduct.stock_unit || resolvedProduct.stockUnit || unit }
+      : null;
+
+    return {
+      ...d,
+      product_id: productId,
+      product_name: productName,
+      quantity: qty,
+      cantidad: qty,
+      stock_unit: unit,
+      product_price: price,
+      subtotal: d.subtotal ?? Number((price * qty).toFixed(2)),
+      producto: productoConUnidad
+    };
+  });
+
+  return {
+    ...enrichPedido(pedidoData),
+    detail: mapped,
+    detalle: mapped,
+    detalles: mapped,
+    items: mapped
+  };
+};
+
+const toDateKey = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return value.slice(0, 10);
+  try {
+    return value.toISOString().slice(0, 10);
+  } catch {
+    return null;
+  }
+};
+
+const getPedidoTotal = (pedidoItem) => {
+  const totalRaw = pedidoItem?.total_price ?? pedidoItem?.total;
+  const totalNum = Number(totalRaw);
+  if (Number.isFinite(totalNum) && totalNum > 0) return totalNum;
+
+  const detailList = pedidoItem?.detail || pedidoItem?.detalles || pedidoItem?.items || [];
+  return (detailList || []).reduce((acc, d) => {
+    const qty = Number(d.quantity ?? d.cantidad ?? 0) || 0;
+    const price = Number(d.product_price ?? d.price ?? d.product?.price ?? d.producto?.price ?? 0) || 0;
+    const subtotal = Number(d.subtotal);
+    return acc + (Number.isFinite(subtotal) ? subtotal : (qty * price));
+  }, 0);
+};
+
+const formatCurrency = (value) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
 const PedidoView = () => {
   const toast = useRef(null);
@@ -92,14 +195,7 @@ const PedidoView = () => {
 
         if (response.success) {
           const list = response.data?.results || response.data || [];
-          const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
-          const enhanced = sorted.map((p) => {
-            const addr = p.shipping_address || p.customer?.address;
-            const obsShipping = extractShippingFromObservations(p.observations || p.observaciones);
-            const shippingStr = p.shipping_address_str || formatAddress(addr) || obsShipping;
-            return { ...p, shipping_address_str: shippingStr, shipping_obs: obsShipping };
-          });
-          setPedidos(enhanced);
+          setPedidos(Array.isArray(list) ? enrichPedidoList(list) : []);
           setSelectedPedido(null);
         } else {
           console.error('Error al obtener pedidos:', response.error);
@@ -124,12 +220,17 @@ const PedidoView = () => {
     };
   }, [filters]);
 
-  const clienteOptions = Array.isArray(clientes)
-    ? clientes.map((cliente) => ({
-      label: `${cliente.first_name || ''} ${cliente.last_name || ''}`.trim() || cliente.name,
-      value: cliente.id
-    }))
-    : [];
+  const clienteOptions = useMemo(
+    () => (
+      Array.isArray(clientes)
+        ? clientes.map((cliente) => ({
+            label: `${cliente.first_name || ''} ${cliente.last_name || ''}`.trim() || cliente.name,
+            value: cliente.id
+          }))
+        : []
+    ),
+    [clientes]
+  );
 
   const handleEstadoFilter = (value) => {
     setFilters((prev) => ({ ...prev, estado: value || null }));
@@ -199,69 +300,6 @@ const PedidoView = () => {
 
   const openLinkInNewTab = () => {
     window.open(generatedLink, '_blank');
-  };
-
-  const formatAddress = (addr) => {
-    if (!addr) return null;
-    const locality = addr.locality_name || addr.locality?.name || '';
-    const province = addr.province_name || addr.locality?.province?.name || '';
-    const loc = [locality, province].filter(Boolean).join(', ');
-    const streetNum = `${addr.street || ''} ${addr.number || ''}`.trim();
-    const extra = [addr.floor, addr.apartment].filter(Boolean).join(' ');
-    const main = [streetNum, loc ? `(${loc})` : ''].filter(Boolean).join(' ');
-    return [main, extra].filter(Boolean).join(' ').trim() || null;
-  };
-
-  const extractShippingFromObservations = (obs) => {
-    if (!obs) return null;
-    const lines = String(obs).split('\n');
-    const entregaLine = lines.find((line) => line.toLowerCase().startsWith('entrega:'));
-    if (!entregaLine) return null;
-    return entregaLine.replace(/entrega:\s*/i, '').trim() || null;
-  };
-
-  const mapPedidoDetalle = (pedidoData = {}) => {
-    const detalles =
-      (Array.isArray(pedidoData.detail) && pedidoData.detail) ||
-      (Array.isArray(pedidoData.detalle) && pedidoData.detalle) ||
-      (Array.isArray(pedidoData.detalles) && pedidoData.detalles) ||
-      (Array.isArray(pedidoData.items) && pedidoData.items) ||
-      [];
-
-    const mapped = detalles.map((d) => {
-      const productId = d.product_id ?? d.product?.id ?? d.producto?.id ?? d.producto_id;
-      const productName = d.product_name || d.product?.name || d.producto?.name || (productId ? `Producto ${productId}` : 'Producto');
-      const qty = d.quantity ?? d.cantidad ?? 1;
-      const price = d.product_price ?? d.price ?? d.precio ?? d.product?.price ?? d.producto?.price ?? 0;
-      const unit = extractStockUnit(d);
-      const resolvedProduct = d.product || d.producto || (productId ? { id: productId, name: productName, price } : null);
-      const productoConUnidad = resolvedProduct
-        ? { ...resolvedProduct, stock_unit: resolvedProduct.stock_unit || resolvedProduct.stockUnit || unit }
-        : null;
-      return {
-        ...d,
-        product_id: productId,
-        product_name: productName,
-        quantity: qty,
-        cantidad: qty,
-        stock_unit: unit,
-        product_price: price,
-        subtotal: d.subtotal ?? Number((price * qty).toFixed(2)),
-        producto: productoConUnidad
-      };
-    });
-
-    const addr = pedidoData.shipping_address || pedidoData.customer?.address;
-    const obsShipping = extractShippingFromObservations(pedidoData.observations || pedidoData.observaciones);
-    return {
-      ...pedidoData,
-      shipping_address_str: pedidoData.shipping_address_str || formatAddress(addr) || obsShipping,
-      shipping_obs: obsShipping,
-      detail: mapped,
-      detalle: mapped,
-      detalles: mapped,
-      items: mapped
-    };
   };
 
   const handleEditar = async () => {
@@ -427,14 +465,9 @@ const PedidoView = () => {
       if (pedidoEditando) {
         const response = await PedidoService.update(pedidoEditando.id, formData);
         if (response.success) {
-          const updated = response.data || formData;
-          const updatedPedidos = [...pedidos.map((p) => {
-            if (p.id !== pedidoEditando.id) return p;
-            const addr = updated.shipping_address || updated.customer?.address;
-            const obsShipping = extractShippingFromObservations(updated.observations || updated.observaciones);
-            return { ...p, ...updated, shipping_address_str: formatAddress(addr) || obsShipping, shipping_obs: obsShipping };
-          })].sort(
-            (a, b) => (b.id || 0) - (a.id || 0)
+          const updated = enrichPedido(response.data || { ...pedidoEditando, ...formData });
+          const updatedPedidos = sortByIdDesc(
+            pedidos.map((p) => (p.id !== pedidoEditando.id ? p : { ...p, ...updated }))
           );
           setPedidos(updatedPedidos);
           setSelectedPedido(updated);
@@ -444,36 +477,14 @@ const PedidoView = () => {
         }
       } else {
         const response = await PedidoService.create(formData);
-        console.log('Respuesta de creación de pedido:', response);
         if (response.success) {
+          const shippingOverride = meta?.shipping_address_override || null;
+          const createdPedido = enrichPedido(response.data, shippingOverride);
           setPedidos((prev) => {
-            const obsShipping = extractShippingFromObservations(response.data?.observations || response.data?.observaciones);
-            const shippingOverride = meta?.shipping_address_override || null;
-            const enriched = {
-              ...response.data,
-              shipping_address_str: shippingOverride || formatAddress(
-                response.data.shipping_address || response.data.customer?.address
-              ) || obsShipping,
-              shipping_obs: obsShipping
-            };
-            const next = [enriched, ...(prev || [])];
-            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
+            const next = [createdPedido, ...(prev || []).filter((pedido) => pedido.id !== createdPedido.id)];
+            return sortByIdDesc(next);
           });
-          PedidoService.getAll()
-            .then((refetch) => {
-              const list = refetch?.data?.results || refetch?.data || [];
-              if (Array.isArray(list) && list.length > 0) {
-                const enhanced = list.map((p) => {
-                  const addr = p.shipping_address || p.customer?.address;
-                  const obsShipping = extractShippingFromObservations(p.observations || p.observaciones);
-                  return { ...p, shipping_address_str: formatAddress(addr) || obsShipping, shipping_obs: obsShipping };
-                });
-                setPedidos(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
-              }
-            })
-            .catch(() => {
-              /* mantener lista optimista si falla */
-            });
+          setSelectedPedido(createdPedido);
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido creado', life: 3000 });
         } else {
           throw new Error(response.error);
@@ -492,8 +503,6 @@ const PedidoView = () => {
     try {
       setSavingVenta(true);
 
-      console.log('🔄 Completando pedido con productos del formulario de venta...');
-      console.log('📋 Items del formulario:', items);
       // Transformar los items del formulario de venta al formato que espera el serializer
       // Estos items pueden haber sido modificados por el usuario en el modal de venta
       // IMPORTANTE: Solo enviar product_id y quantity - NO enviar subtotal, price, etc.
@@ -505,8 +514,6 @@ const PedidoView = () => {
           quantity: Number(quantity) // Asegurar que sea número
         };
       }).filter(detalle => detalle.product_id && detalle.quantity > 0); // Filtrar items válidos
-
-      console.log('📤 Detalles limpiados para OrderSerializer:', detallesParaEnviar);
 
       // Validar que tengamos al menos un producto
       if (detallesParaEnviar.length === 0) {
@@ -539,7 +546,6 @@ const PedidoView = () => {
         updatePayload.shipping_address_id = selectedPedido.shipping_address_id;
       }
 
-      console.log('📤 Payload completo con productos modificados:', updatePayload);
       const updateResponse = await PedidoService.update(selectedPedido.id, updatePayload);
 
       if (!updateResponse.success) {
@@ -548,14 +554,12 @@ const PedidoView = () => {
       }
 
       // Actualizar estado local
-      const updatedPedido = { ...selectedPedido, state: 'completed' };
+      const updatedPedido = enrichPedido({ ...selectedPedido, ...updateResponse.data, state: 'completed' });
       setSelectedPedido(updatedPedido);
 
-      setPedidos(prev => prev.map(p =>
-        p.id === selectedPedido.id
-          ? { ...p, state: 'completed' }
-          : p
-      ));
+      setPedidos((prev) => sortByIdDesc(prev.map((p) =>
+        p.id === selectedPedido.id ? { ...p, ...updatedPedido } : p
+      )));
 
       toast.current?.show({
         severity: 'success',
@@ -564,13 +568,10 @@ const PedidoView = () => {
         life: 4000
       });
 
-      console.log('✅ Pedido completado exitosamente con productos del formulario');
       setShowVentaDialog(false);
 
     } catch (error) {
       const detail = error?.message || 'No se pudo completar el pedido. Revisa los datos e inténtalo nuevamente.';
-      console.error('❌ Error completando pedido:', error);
-      console.error('❌ Detalles del error:', error.response?.data || error.message);
       toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 4000 });
     } finally {
       setSavingVenta(false);
@@ -586,20 +587,6 @@ const PedidoView = () => {
       if (response.success) {
         setPedidos((prev) => prev.filter((p) => p.id !== selectedPedido.id));
         setSelectedPedido(null);
-        PedidoService.getAll()
-          .then((refetch) => {
-            const list = refetch?.data?.results || refetch?.data || [];
-            if (Array.isArray(list) && list.length > 0) {
-              const enhanced = list.map((p) => ({
-                ...p,
-                shipping_address_str: formatAddress(p.shipping_address || p.customer?.address) || extractShippingFromObservations(p.observations || p.observaciones)
-              }));
-              setPedidos(enhanced.sort((a, b) => (b.id || 0) - (a.id || 0)));
-            }
-          })
-          .catch(() => {
-            /* mantener lista local si falla */
-          });
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido eliminado', life: 3000 });
       } else {
         throw new Error(response.error);
@@ -621,22 +608,27 @@ const PedidoView = () => {
   };
 
   // Filtro cliente/estado/búsqueda en front para garantizar funcionamiento
-  const filteredPedidos = Array.isArray(pedidos)
-    ? pedidos.filter((p) => {
-      const term = (filters.search || '').toLowerCase().trim();
-      if (filters.estado && p.state !== filters.estado) return false;
-      if (filters.clienteId && (p.customer?.id || p.customer_id) !== filters.clienteId) return false;
-      if (!term) return true;
+  const filteredPedidos = useMemo(
+    () => (
+      Array.isArray(pedidos)
+        ? pedidos.filter((p) => {
+            const term = (filters.search || '').toLowerCase().trim();
+            if (filters.estado && p.state !== filters.estado) return false;
+            if (filters.clienteId && (p.customer?.id || p.customer_id) !== filters.clienteId) return false;
+            if (!term) return true;
 
-      const nombre = `${p.customer?.first_name || ''} ${p.customer?.last_name || ''}`.toLowerCase();
-      const idMatch = (p.id || '').toString().toLowerCase().includes(term);
-      const obsMatch = (p.observations || '').toLowerCase().includes(term);
-      const fechaMatch = (p.date || '').toString().toLowerCase().includes(term);
-      const nombreMatch = nombre.includes(term);
+            const nombre = `${p.customer?.first_name || ''} ${p.customer?.last_name || ''}`.toLowerCase();
+            const idMatch = (p.id || '').toString().toLowerCase().includes(term);
+            const obsMatch = (p.observations || '').toLowerCase().includes(term);
+            const fechaMatch = (p.date || '').toString().toLowerCase().includes(term);
+            const nombreMatch = nombre.includes(term);
 
-      return idMatch || obsMatch || fechaMatch || nombreMatch;
-    })
-    : [];
+            return idMatch || obsMatch || fechaMatch || nombreMatch;
+          })
+        : []
+    ),
+    [pedidos, filters]
+  );
 
   const direccionTemplate = (rowData) => {
     if (rowData.shipping_address_str) return rowData.shipping_address_str;
@@ -674,7 +666,7 @@ const PedidoView = () => {
     return String(value).trim() || '-';
   };
 
-  const columns = [
+  const columns = useMemo(() => [
     { field: 'id', header: 'ID', style: { width: '8%' } },
     {
       field: 'customer',
@@ -702,45 +694,27 @@ const PedidoView = () => {
       body: estadoTemplate,
       style: { width: '12%' }
     }
-  ];
+  ], []);
 
-  const toDateKey = (value) => {
-    if (!value) return null;
-    if (typeof value === 'string') return value.slice(0, 10);
-    try {
-      return value.toISOString().slice(0, 10);
-    } catch {
-      return null;
-    }
-  };
-
-  const getPedidoTotal = (pedidoItem) => {
-    const totalRaw = pedidoItem?.total_price ?? pedidoItem?.total;
-    const totalNum = Number(totalRaw);
-    if (Number.isFinite(totalNum) && totalNum > 0) return totalNum;
-
-    const detailList = pedidoItem?.detail || pedidoItem?.detalles || pedidoItem?.items || [];
-    return (detailList || []).reduce((acc, d) => {
-      const qty = Number(d.quantity ?? d.cantidad ?? 0) || 0;
-      const price = Number(d.product_price ?? d.price ?? d.product?.price ?? d.producto?.price ?? 0) || 0;
-      const subtotal = Number(d.subtotal);
-      return acc + (Number.isFinite(subtotal) ? subtotal : (qty * price));
-    }, 0);
-  };
-
-  const dateFromHojaKey = toDateKey(fechaDesdeHoja);
-  const dateToHojaKey = toDateKey(fechaHastaHoja);
-  const pedidosHojaRuta = (pedidos || []).filter((p) => {
-    if (estadoHojaRuta && p.state !== estadoHojaRuta) return false;
-    const pedidoDate = toDateKey(p.date);
-    if (!pedidoDate) return true;
-    if (dateFromHojaKey && pedidoDate < dateFromHojaKey) return false;
-    if (dateToHojaKey && pedidoDate > dateToHojaKey) return false;
-    return true;
-  });
-  const totalGeneralHojaRuta = pedidosHojaRuta.reduce((acc, p) => acc + getPedidoTotal(p), 0);
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
+  const dateFromHojaKey = useMemo(() => toDateKey(fechaDesdeHoja), [fechaDesdeHoja]);
+  const dateToHojaKey = useMemo(() => toDateKey(fechaHastaHoja), [fechaHastaHoja]);
+  const pedidosHojaRuta = useMemo(
+    () => (
+      (pedidos || []).filter((p) => {
+        if (estadoHojaRuta && p.state !== estadoHojaRuta) return false;
+        const pedidoDate = toDateKey(p.date);
+        if (!pedidoDate) return true;
+        if (dateFromHojaKey && pedidoDate < dateFromHojaKey) return false;
+        if (dateToHojaKey && pedidoDate > dateToHojaKey) return false;
+        return true;
+      })
+    ),
+    [pedidos, estadoHojaRuta, dateFromHojaKey, dateToHojaKey]
+  );
+  const totalGeneralHojaRuta = useMemo(
+    () => pedidosHojaRuta.reduce((acc, p) => acc + getPedidoTotal(p), 0),
+    [pedidosHojaRuta]
+  );
 
   return (
     <div className="pedido-view h-full">
