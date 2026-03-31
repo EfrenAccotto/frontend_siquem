@@ -1,27 +1,37 @@
-// src/modules/clientes/store/useClienteStore.js
 import { create } from 'zustand';
 import ClienteService from '../router/clientes/services/ClienteService';
 
-const useClienteStore = create((set, get) => ({
-  // Estado
+const sortClientesByIdDesc = (list = []) =>
+  [...list].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+const useClienteStore = create((set, getState) => ({
   clientes: [],
   clienteActual: null,
   loading: false,
   error: null,
+  loaded: false,
 
-  // Acciones
-  fetchClientes: async () => {
+  fetchClientes: async ({ force = false } = {}) => {
+    const { loaded, loading, clientes } = getState();
+    if (!force && (loaded || loading) && Array.isArray(clientes) && clientes.length) {
+      return clientes;
+    }
+
     set({ loading: true, error: null });
     try {
       const response = await ClienteService.getAll();
       if (!response?.success) {
         set({ error: response?.error || 'Error al obtener clientes', loading: false });
-        return;
+        return [];
       }
+
       const list = response?.data?.results || response?.data || [];
-      set({ clientes: Array.isArray(list) ? list : [], loading: false });
+      const sorted = Array.isArray(list) ? sortClientesByIdDesc(list) : [];
+      set({ clientes: sorted, loading: false, loaded: true });
+      return sorted;
     } catch (error) {
       set({ error: error.message, loading: false });
+      return [];
     }
   },
 
@@ -30,8 +40,10 @@ const useClienteStore = create((set, get) => ({
     try {
       const response = await ClienteService.getById(id);
       set({ clienteActual: response.data, loading: false });
+      return response.data;
     } catch (error) {
       set({ error: error.message, loading: false });
+      throw error;
     }
   },
 
@@ -39,11 +51,13 @@ const useClienteStore = create((set, get) => ({
     set({ loading: true, error: null });
     try {
       const response = await ClienteService.create(clienteData);
+      const nextCliente = response?.data;
       set((state) => ({
-        clientes: [...state.clientes, response.data],
-        loading: false
+        clientes: nextCliente ? sortClientesByIdDesc([nextCliente, ...(state.clientes || [])]) : state.clientes,
+        loading: false,
+        loaded: true
       }));
-      return response.data;
+      return nextCliente;
     } catch (error) {
       set({ error: error.message, loading: false });
       throw error;
@@ -55,8 +69,8 @@ const useClienteStore = create((set, get) => ({
     try {
       const response = await ClienteService.update(id, clienteData);
       set((state) => ({
-        clientes: state.clientes.map(c =>
-          c.id === id ? response.data : c
+        clientes: sortClientesByIdDesc(
+          state.clientes.map((clienteItem) => (clienteItem.id === id ? response.data : clienteItem))
         ),
         loading: false
       }));
@@ -72,23 +86,12 @@ const useClienteStore = create((set, get) => ({
     try {
       await ClienteService.delete(id);
       set((state) => ({
-        clientes: state.clientes.filter(c => c.id !== id),
+        clientes: state.clientes.filter((clienteItem) => clienteItem.id !== id),
         loading: false
       }));
     } catch (error) {
       set({ error: error.message, loading: false });
       throw error;
-    }
-  },
-
-  searchClientes: async (query) => {
-    set({ loading: true, error: null });
-    try {
-      const response = await ClienteService.search(query);
-      const list = response?.data?.results || response?.data || [];
-      set({ clientes: Array.isArray(list) ? list : [], loading: false });
-    } catch (error) {
-      set({ error: error.message, loading: false });
     }
   },
 

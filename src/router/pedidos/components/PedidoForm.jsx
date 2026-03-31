@@ -8,7 +8,8 @@ import { InputText } from 'primereact/inputtext';
 import { Checkbox } from 'primereact/checkbox';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
-import { useEffect, useState } from 'react';
+import { Toast } from 'primereact/toast';
+import { useEffect, useRef, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import UbicacionService from '@/router/ubicacion/services/UbicacionService';
@@ -17,25 +18,40 @@ import ClienteForm from '@/router/clientes/components/ClienteForm';
 import { formatQuantityFromSource, extractStockUnit, parseQuantityValue } from '@/utils/unitParser';
 import { PAYMENT_METHOD_OPTIONS, DEFAULT_PAYMENT_METHOD, normalizePaymentMethod } from '@/utils/paymentMethod';
 
-// Estados base permitidos en el formulario
 const estadoOptionsBase = [
   { label: 'Pendiente', value: 'pending' },
   { label: 'Cancelado', value: 'cancelled' },
   { label: 'Completado', value: 'completed' }
 ];
 
+const getErrorDetail = (errorValue, fallbackMessage) => {
+  if (typeof errorValue === 'string' && errorValue.trim()) return errorValue;
+  if (!errorValue || typeof errorValue !== 'object') return fallbackMessage;
+
+  const firstKey = Object.keys(errorValue)[0];
+  const firstValue = errorValue[firstKey];
+
+  if (Array.isArray(firstValue) && firstValue.length) {
+    return `${firstKey}: ${firstValue[0]}`;
+  }
+
+  if (typeof firstValue === 'string' && firstValue.trim()) {
+    return `${firstKey}: ${firstValue}`;
+  }
+
+  return fallbackMessage;
+};
+
 const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const { clientes, fetchClientes } = useClienteStore();
-  
-  // Determinar opciones de estado basado en si es edición o creación
+  const toast = useRef(null);
+
   const getEstadoOptions = () => {
     if (!pedido) {
-      // Modo creación: permitir todos los estados incluyendo completed
       return estadoOptionsBase;
-    } else {
-      // Modo edición: no permitir cambiar a completed
-      return estadoOptionsBase.filter(option => option.value !== 'completed');
     }
+
+    return estadoOptionsBase.filter((option) => option.value !== 'completed');
   };
 
   const [formData, setFormData] = useState({
@@ -106,15 +122,16 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       (Array.isArray(pedidoData?.items) && pedidoData.items) ||
       [];
 
-    return detalles.map((d) => {
+    return detalles.map((detalle) => {
       const productoResuelto = resolveProducto(
-        d.product || d.producto || d.product_id || d.producto_id,
+        detalle.product || detalle.producto || detalle.product_id || detalle.producto_id,
         productosList
       );
-      const unitFromDetail = extractStockUnit(d);
-      const qty = parseQuantityValue(d.quantity ?? d.cantidad ?? 1);
+      const unitFromDetail = extractStockUnit(detalle);
+      const qty = parseQuantityValue(detalle.quantity ?? detalle.cantidad ?? 1);
+
       return {
-        id: d.id || Date.now() + Math.random(),
+        id: detalle.id || Date.now() + Math.random(),
         producto: productoResuelto,
         cantidad: qty,
         stock_unit: unitFromDetail || productoResuelto?.stock_unit || 'unit'
@@ -125,6 +142,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const formatDireccionCliente = (cliente) => {
     const addr = cliente?.address;
     if (!addr) return '';
+
     const localidad = addr.locality?.name || addr.locality_name || '';
     const provincia = addr.locality?.province?.name || '';
     const calleNumero = `${addr.street || ''} ${addr.number || ''}`.trim();
@@ -146,10 +164,12 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     const dir = [calle, numero].filter(Boolean).join(' ').trim();
     const loc = formatLocalidad(data.envioLocalidad);
     const zona = formatZona(data.envioZona);
+
     if (dir || loc || zona) {
       const base = [dir, loc].filter(Boolean).join(' - ');
       return `${base}${zona ? ` (Zona: ${zona})` : ''}`.trim();
     }
+
     return formatDireccionCliente(cliente);
   };
 
@@ -171,6 +191,21 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     return '';
   };
 
+  const verifyCreatedCliente = async (createdResponse) => {
+    const createdId = createdResponse?.data?.id;
+
+    if (!createdResponse?.success || !createdId) {
+      throw new Error(getErrorDetail(createdResponse?.error, 'El backend no confirmo el alta del cliente'));
+    }
+
+    const verification = await ClienteService.getById(createdId);
+    if (!verification?.success || !verification?.data?.id) {
+      throw new Error(getErrorDetail(verification?.error, 'No se pudo verificar el cliente guardado en el backend'));
+    }
+
+    return verification.data;
+  };
+
   useEffect(() => {
     if (!visible) return;
 
@@ -178,8 +213,9 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       await fetchClientes();
       const clientesList = useClienteStore.getState()?.clientes || clientes;
       const productosList = (await loadProductos()) || productos;
-      
+
       const clienteDelPedido = resolveClienteValue(pedido?.customer || pedido?.cliente, clientesList);
+
       if (pedido) {
         const items = mapItemsFromPedido(pedido, productosList);
         setFormData({
@@ -188,7 +224,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           fechaPedido: pedido.date ? new Date(pedido.date) : new Date(),
           estado: pedido.state || pedido.estado || 'pending',
           formaPago: normalizePaymentMethod(pedido.payment_method || pedido.paymentMethod),
-          items: items,
+          items,
           usarEnvioPersonalizado: false,
           envioLocalidad: null,
           envioZona: null,
@@ -210,6 +246,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           envioNumero: ''
         });
       }
+
       setSelectedProducto(null);
       setCantidad(1);
       setCantidadError('');
@@ -221,28 +258,33 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
   useEffect(() => {
     if (!visible) return;
+
     const loadLocalidades = async () => {
       const resp = await UbicacionService.getLocalidades();
       if (resp.success) {
         setLocalidades(resp.data || []);
       }
     };
+
     loadLocalidades();
   }, [visible]);
 
   useEffect(() => {
     if (!formData.usarEnvioPersonalizado) return;
+
     const locId = formData.envioLocalidad?.id;
     if (!locId) {
       setZonas([]);
       return;
     }
+
     const loadZonas = async () => {
       const resp = await UbicacionService.getZonas(locId);
       if (resp.success) {
         setZonas(resp.data || []);
       }
     };
+
     loadZonas();
   }, [formData.envioLocalidad, formData.usarEnvioPersonalizado]);
 
@@ -257,23 +299,23 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
         setProductos(lista);
         return lista;
       }
-    } catch (err) {
-      console.error('Error cargando productos', err);
+    } catch (error) {
+      console.error('Error cargando productos', error);
     }
+
     return productos;
   };
 
-  const clienteLabel = (c) => `${c?.first_name || ''} ${c?.last_name || ''}`.trim() || c?.nombreCompleto || c?.name || 'Sin nombre';
+  const clienteLabel = (cliente) =>
+    `${cliente?.first_name || ''} ${cliente?.last_name || ''}`.trim() || cliente?.nombreCompleto || cliente?.name || 'Sin nombre';
 
   const handleSubmit = async () => {
     if (!formData.cliente) return;
 
-    // No permitir crear pedidos en estado cancelado
     if (!pedido && formData.estado === 'cancelled') {
       return;
     }
 
-    // Al editar, no permitir cambiar el estado a completed
     if (pedido && formData.estado === 'completed') {
       return;
     }
@@ -282,20 +324,16 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       setDireccionErrors({});
     }
 
-    // Validar que el pedido tenga al menos un item
     if (!formData.items || formData.items.length === 0) {
-      console.warn('Intento de enviar pedido sin items');
       return;
     }
 
     const detailItems = (formData.items || []).map((item) => ({
       product_id: item.producto?.id || item.producto || item.product_id,
       quantity: normalizeCantidad(item.producto, item.cantidad || item.quantity || 1)
-    })).filter((d) => d.product_id);
+    })).filter((item) => item.product_id);
 
-    // Validar que después del mapeo y filtro tengamos items válidos
     if (detailItems.length === 0) {
-      console.warn('No hay items válidos después del mapeo');
       return;
     }
 
@@ -322,7 +360,6 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
       const createdAddress = await UbicacionService.createAddress(addressPayload);
       if (!createdAddress.success) {
-        console.warn('No se pudo crear la direccion:', createdAddress.error);
         return;
       }
 
@@ -334,6 +371,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
         });
       }
     }
+
     const observacionesConEnvio = [formData.observaciones, formData.usarEnvioPersonalizado ? `Entrega: ${direccionEntrega}` : '']
       .filter(Boolean)
       .join('\n');
@@ -348,9 +386,6 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       detail: detailItems
     };
 
-    // Log para debug - puede removerse en producción
-    console.log('Enviando pedido con payload:', payload);
-
     onSave(payload, {
       shipping_address_override: formData.usarEnvioPersonalizado ? direccionEntrega : null
     });
@@ -359,24 +394,25 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const handleCrearClienteDesdePedido = async (clientePayload) => {
     setSavingCliente(true);
     setClienteInlineError('');
+
     try {
       const response = await ClienteService.create(clientePayload);
-      if (!response?.success) {
-        const err = typeof response?.error === 'string' ? response.error : 'No se pudo crear el cliente';
-        throw new Error(err);
-      }
+      const clienteVerificado = await verifyCreatedCliente(response);
 
       await fetchClientes();
       const clientesActualizados = useClienteStore.getState()?.clientes || [];
-      const clienteCreado = clientesActualizados.find((c) => c.id === response?.data?.id) || response?.data;
+      const clienteCreado = clientesActualizados.find((cliente) => cliente.id === clienteVerificado.id) || clienteVerificado;
 
       setFormData((prev) => ({
         ...prev,
         cliente: clienteCreado || prev.cliente
       }));
       setShowClienteDialog(false);
+      toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente guardado correctamente', life: 3000 });
     } catch (error) {
-      setClienteInlineError(error?.message || 'No se pudo crear el cliente');
+      const detail = error?.message || 'No se pudo crear el cliente';
+      setClienteInlineError(detail);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 3500 });
     } finally {
       setSavingCliente(false);
     }
@@ -384,11 +420,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
   const handleAddItem = () => {
     if (isPedidoCompleted) return;
-    console.log('=== DEBUGGING ADD ITEM ===');
-    console.log('selectedProducto:', selectedProducto);
-    console.log('cantidad:', cantidad);
-    console.log('productos disponibles:', productos);
-    console.log('formData.items actual:', formData.items);
+
     const error = validateCantidad(selectedProducto, cantidad);
     if (error) {
       setCantidadError(error);
@@ -396,7 +428,6 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     }
 
     if (!selectedProducto || (cantidad || 0) <= 0) {
-      console.log('??O Validaci??n fall?? - selectedProducto:', !!selectedProducto, 'cantidad:', cantidad);
       return;
     }
 
@@ -404,34 +435,28 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     const normalizedProduct = selectedProducto?.stock_unit
       ? selectedProducto
       : { ...selectedProducto, stock_unit: extractStockUnit(selectedProducto) };
+
     const item = {
       id: Date.now(),
       producto: normalizedProduct,
       cantidad: normalizeCantidad(normalizedProduct, cantidad || 1),
       stock_unit: normalizedProduct.stock_unit || 'unit'
     };
-    
-    console.log('✅ Item a agregar:', item);
-    
-    setFormData((prev) => {
-      const newItems = [...(prev.items || []), item];
-      console.log('📝 Actualizando formData.items de', prev.items?.length || 0, 'a', newItems.length);
-      console.log('📝 Nuevos items:', newItems);
-      return {
-        ...prev,
-        items: newItems
-      };
-    });
+
+    setFormData((prev) => ({
+      ...prev,
+      items: [...(prev.items || []), item]
+    }));
     setSelectedProducto(null);
     setCantidad(1);
-    console.log('=========================');
   };
 
   const handleRemoveItem = (rowData) => {
     if (isPedidoCompleted) return;
+
     setFormData((prev) => ({
       ...prev,
-      items: (prev.items || []).filter((it) => it.id !== rowData.id)
+      items: (prev.items || []).filter((item) => item.id !== rowData.id)
     }));
   };
 
@@ -441,14 +466,10 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       <Button
         label="Guardar Pedido"
         icon="pi pi-check"
-        onClick={() => {
-          console.log('🔘 Botón Guardar clickeado - cliente:', !!formData.cliente, 'items:', formData.items?.length || 0);
-          handleSubmit();
-        }}
+        onClick={handleSubmit}
         disabled={!formData.cliente || !formData.items?.length}
         loading={loading}
       />
-      
     </div>
   );
 
@@ -462,6 +483,8 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       footer={footer}
       onHide={onHide}
     >
+      <Toast ref={toast} />
+
       <div className="grid">
         <div className="col-12">
           <div className="field">
@@ -485,8 +508,8 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
               optionLabel={clienteLabel}
               placeholder="Seleccione un cliente"
               filter
-              itemTemplate={(c) => clienteLabel(c)}
-              valueTemplate={(c) => clienteLabel(c)}
+              itemTemplate={(cliente) => clienteLabel(cliente)}
+              valueTemplate={(cliente) => clienteLabel(cliente)}
             />
             <small className="text-500 block mt-1">
               {formData.cliente?.address
@@ -529,7 +552,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
             )}
             {pedido && formData.estado === 'completed' && (
               <small className="text-500 block mt-1">
-                Los pedidos completados no pueden editarse. 
+                Los pedidos completados no pueden editarse.
               </small>
             )}
           </div>
@@ -655,7 +678,11 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
                 <Dropdown
                   value={selectedProducto}
                   options={productos}
-                  onChange={(e) => { setSelectedProducto(e.value); setCantidadError(''); setCantidad(1); }}
+                  onChange={(e) => {
+                    setSelectedProducto(e.value);
+                    setCantidadError('');
+                    setCantidad(1);
+                  }}
                   optionLabel="name"
                   placeholder="Seleccione producto"
                   filter
@@ -665,7 +692,10 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
               <div className="field col-12 md:col-3">
                 <InputNumber
                   value={cantidad}
-                  onValueChange={(e) => { setCantidad(e.value); setCantidadError(''); }}
+                  onValueChange={(e) => {
+                    setCantidad(e.value);
+                    setCantidadError('');
+                  }}
                   showButtons
                   min={isUnitProduct(selectedProducto) ? 1 : 0.001}
                   maxFractionDigits={isUnitProduct(selectedProducto) ? 0 : 3}
@@ -715,7 +745,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
           </DataTable>
           {(!formData.items || formData.items.length === 0) && (
             <small className="text-orange-500 block mt-2 font-medium">
-              ⚠️ Debes agregar al menos un producto para crear el pedido
+              Debes agregar al menos un producto para crear el pedido
             </small>
           )}
         </div>

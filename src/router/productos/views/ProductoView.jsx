@@ -1,11 +1,14 @@
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ProductoService from '../services/ProductoService';
 import ProductoForm from '../components/ProductoForm';
 import { Toast } from 'primereact/toast';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { formatUnitValue } from '@/utils/unitParser';
+
+const sortByIdDesc = (list = []) =>
+  [...list].sort((a, b) => (b.id || 0) - (a.id || 0));
 
 const formatStockUnit = (unit) => {
   if (unit === 'kg') return 'Kg';
@@ -65,11 +68,9 @@ const ProductoView = () => {
 
         if (response.success) {
           const productosList = Array.isArray(response.data) ? response.data : [];
-          const sorted = [...productosList].sort((a, b) => (b.id || 0) - (a.id || 0));
-          setProductos(sorted);
+          setProductos(sortByIdDesc(productosList));
           setSelectedProducto(null);
         } else {
-          console.error('Error al obtener productos:', response.error);
           toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
         }
       } catch (error) {
@@ -97,6 +98,7 @@ const ProductoView = () => {
 
   const handleEditar = () => {
     if (!selectedProducto) return;
+
     const fetchProducto = async () => {
       setFormBusy(true);
       try {
@@ -110,6 +112,7 @@ const ProductoView = () => {
         setFormBusy(false);
       }
     };
+
     fetchProducto();
   };
 
@@ -118,37 +121,24 @@ const ProductoView = () => {
       setSaving(true);
       if (productoEditando) {
         const response = await ProductoService.update(productoEditando.id, formData);
-        if (response.success) {
-          const updatedProductos = productos
-            .map(p => (p.id === productoEditando.id ? response.data : p))
-            .sort((a, b) => (b.id || 0) - (a.id || 0));
-          setProductos(updatedProductos);
-          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto actualizado', life: 3000 });
-        } else {
+        if (!response.success) {
           throw new Error(response.error || 'No se pudo actualizar');
         }
+
+        setProductos((prev) =>
+          sortByIdDesc(prev.map((producto) => (producto.id === productoEditando.id ? response.data : producto)))
+        );
+        toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto actualizado', life: 3000 });
       } else {
         const response = await ProductoService.create(formData);
-        if (response.success) {
-          // Optimista
-          setProductos((prev) => {
-            const next = [response.data, ...(prev || [])];
-            return next.sort((a, b) => (b.id || 0) - (a.id || 0));
-          });
-          // Refrescar con backend (solo si trae resultados)
-          ProductoService.getAll()
-            .then((refetch) => {
-              const list = refetch?.data?.results || refetch?.data || [];
-              if (Array.isArray(list) && list.length > 0) {
-                setProductos([...list].sort((a, b) => (b.id || 0) - (a.id || 0)));
-              }
-            })
-            .catch(() => { /* mantener lista optimista si falla */ });
-          toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto creado', life: 3000 });
-        } else {
+        if (!response.success) {
           throw new Error(response.error || 'No se pudo crear');
         }
+
+        setProductos((prev) => sortByIdDesc([response.data, ...(prev || [])]));
+        toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto creado', life: 3000 });
       }
+
       setShowDialog(false);
       setProductoEditando(null);
     } catch (error) {
@@ -160,18 +150,16 @@ const ProductoView = () => {
 
   const eliminarSeleccionado = async () => {
     if (!selectedProducto) return;
+
     try {
       const response = await ProductoService.delete(selectedProducto.id);
-      if (response.success) {
-        const refetch = await ProductoService.getAll();
-        const list = refetch?.data?.results || refetch?.data || [];
-        const sorted = Array.isArray(list) ? [...list].sort((a, b) => (b.id || 0) - (a.id || 0)) : [];
-        setProductos(sorted);
-        setSelectedProducto(null);
-        toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Producto eliminado', life: 3000 });
-      } else {
+      if (!response.success) {
         throw new Error(response.error || 'No se pudo eliminar');
       }
+
+      setProductos((prev) => prev.filter((producto) => producto.id !== selectedProducto.id));
+      setSelectedProducto(null);
+      toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto eliminado', life: 3000 });
     } catch (error) {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
     }
@@ -181,23 +169,23 @@ const ProductoView = () => {
     if (!selectedProducto) return;
     confirmDialog({
       message: `¿Seguro que deseas eliminar "${selectedProducto.name}"?`,
-      header: 'Confirmar eliminación',
+      header: 'Confirmar eliminacion',
       icon: 'pi pi-exclamation-triangle',
       acceptClassName: 'p-button-danger',
       accept: eliminarSeleccionado
     });
   };
 
-  const filteredProductos = Array.isArray(productos)
-    ? productos.filter((p) => {
-        const term = search.toLowerCase().trim();
-        if (!term) return true;
-        return (
-          (p.name || '').toLowerCase().includes(term) ||
-          (p.description || '').toLowerCase().includes(term)
-        );
-      })
-    : [];
+  const filteredProductos = useMemo(() => {
+    if (!Array.isArray(productos)) return [];
+    const term = search.toLowerCase().trim();
+    if (!term) return productos;
+
+    return productos.filter((producto) =>
+      (producto.name || '').toLowerCase().includes(term) ||
+      (producto.description || '').toLowerCase().includes(term)
+    );
+  }, [productos, search]);
 
   return (
     <div className="producto-view h-full">
@@ -214,20 +202,22 @@ const ProductoView = () => {
         columns={Columns}
         selection={selectedProducto}
         onSelectionChange={setSelectedProducto}
-        header={<ActionButtons
-          showCreate={true}
-          showEdit={true}
-          showDelete={true}
-          showExport={false}
-          editDisabled={!selectedProducto}
-          deleteDisabled={!selectedProducto}
-          onCreate={handleNuevo}
-          onEdit={handleEditar}
-          onDelete={handleEliminar}
-          searchValue={search}
-          onSearch={(value) => setSearch(value || '')}
-          searchPlaceholder="Filtrar por nombre"
-        />}
+        header={
+          <ActionButtons
+            showCreate={true}
+            showEdit={true}
+            showDelete={true}
+            showExport={false}
+            editDisabled={!selectedProducto}
+            deleteDisabled={!selectedProducto}
+            onCreate={handleNuevo}
+            onEdit={handleEditar}
+            onDelete={handleEliminar}
+            searchValue={search}
+            onSearch={(value) => setSearch(value || '')}
+            searchPlaceholder="Filtrar por nombre"
+          />
+        }
       />
 
       <ProductoForm
