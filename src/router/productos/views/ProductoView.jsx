@@ -1,6 +1,6 @@
 import TableComponent from '../../../components/layout/TableComponent';
 import ActionButtons from '../../../components/layout/ActionButtons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ProductoService from '../services/ProductoService';
 import ProductoForm from '../components/ProductoForm';
 import { Toast } from 'primereact/toast';
@@ -47,6 +47,7 @@ const Columns = [
 ];
 
 const ProductoView = () => {
+  const DEFAULT_ROWS = 60;
   const [productos, setProductos] = useState([]);
   const [selectedProducto, setSelectedProducto] = useState(null);
   const [showDialog, setShowDialog] = useState(false);
@@ -55,41 +56,59 @@ const ProductoView = () => {
   const [saving, setSaving] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, rows: DEFAULT_ROWS, total: 0 });
   const toast = useRef(null);
 
   useEffect(() => {
-    let mounted = true;
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPagination((prev) => ({ ...prev, page: 1 }));
+    }, 300);
 
-    const loadProductos = async () => {
-      setLoading(true);
-      try {
-        const response = await ProductoService.getAll();
-        if (!mounted) return;
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-        if (response.success) {
-          const productosList = Array.isArray(response.data) ? response.data : [];
-          setProductos(sortByIdDesc(productosList));
-          setSelectedProducto(null);
-        } else {
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
-        }
-      } catch (error) {
-        if (mounted) {
-          console.error('Error inesperado:', error);
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+  const loadProductos = async ({ page = pagination.page, rows = pagination.rows, searchTerm = debouncedSearch } = {}) => {
+    setLoading(true);
+    try {
+      const params = {
+        page,
+        page_size: rows
+      };
+      if (searchTerm) {
+        params.search = searchTerm;
       }
-    };
 
-    loadProductos();
+      const response = await ProductoService.getAll(params);
+      if (response.success) {
+        const productosList = Array.isArray(response.data) ? response.data : [];
+        setProductos(sortByIdDesc(productosList));
+        setSelectedProducto(null);
+        setPagination((prev) => ({
+          ...prev,
+          page,
+          rows,
+          total: Number(response.pagination?.count) || 0
+        }));
+      } else {
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
+      }
+    } catch (error) {
+      console.error('Error inesperado:', error);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar productos', life: 3000 });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  useEffect(() => {
+    loadProductos({
+      page: pagination.page,
+      rows: pagination.rows,
+      searchTerm: debouncedSearch
+    });
+  }, [pagination.page, pagination.rows, debouncedSearch]);
 
   const handleNuevo = () => {
     setProductoEditando(null);
@@ -106,7 +125,7 @@ const ProductoView = () => {
         const data = resp.success ? resp.data : selectedProducto;
         setProductoEditando(data);
         setShowDialog(true);
-      } catch (error) {
+      } catch {
         toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el producto', life: 3000 });
       } finally {
         setFormBusy(false);
@@ -125,9 +144,7 @@ const ProductoView = () => {
           throw new Error(response.error || 'No se pudo actualizar');
         }
 
-        setProductos((prev) =>
-          sortByIdDesc(prev.map((producto) => (producto.id === productoEditando.id ? response.data : producto)))
-        );
+        await loadProductos();
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto actualizado', life: 3000 });
       } else {
         const response = await ProductoService.create(formData);
@@ -135,7 +152,8 @@ const ProductoView = () => {
           throw new Error(response.error || 'No se pudo crear');
         }
 
-        setProductos((prev) => sortByIdDesc([response.data, ...(prev || [])]));
+        setPagination((prev) => ({ ...prev, page: 1 }));
+        await loadProductos({ page: 1 });
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto creado', life: 3000 });
       }
 
@@ -157,7 +175,7 @@ const ProductoView = () => {
         throw new Error(response.error || 'No se pudo eliminar');
       }
 
-      setProductos((prev) => prev.filter((producto) => producto.id !== selectedProducto.id));
+      await loadProductos();
       setSelectedProducto(null);
       toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Producto eliminado', life: 3000 });
     } catch (error) {
@@ -176,17 +194,6 @@ const ProductoView = () => {
     });
   };
 
-  const filteredProductos = useMemo(() => {
-    if (!Array.isArray(productos)) return [];
-    const term = search.toLowerCase().trim();
-    if (!term) return productos;
-
-    return productos.filter((producto) =>
-      (producto.name || '').toLowerCase().includes(term) ||
-      (producto.description || '').toLowerCase().includes(term)
-    );
-  }, [productos, search]);
-
   return (
     <div className="producto-view h-full">
       <Toast ref={toast} />
@@ -197,11 +204,22 @@ const ProductoView = () => {
 
       <TableComponent
         visible={true}
-        data={filteredProductos}
+        data={productos}
         loading={loading}
         columns={Columns}
         selection={selectedProducto}
         onSelectionChange={setSelectedProducto}
+        rows={pagination.rows}
+        first={(pagination.page - 1) * pagination.rows}
+        totalRecords={pagination.total}
+        rowsPerPageOptions={[10, 25, 50, 60]}
+        onPage={(event) => {
+          setPagination((prev) => ({
+            ...prev,
+            page: Math.floor(event.first / event.rows) + 1,
+            rows: event.rows
+          }));
+        }}
         header={
           <ActionButtons
             showCreate={true}

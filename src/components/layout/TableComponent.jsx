@@ -11,11 +11,15 @@ const TableComponent = ({
   header: customHeader,
   selection = null,
   onSelectionChange = null,
+  rows = 10,
+  first = 0,
+  totalRecords = undefined,
+  onPage = null,
+  rowsPerPageOptions = [10, 25, 50, 60],
 }) => {
-
   const defaultHeader = <ActionButtons />;
-
   const header = customHeader || defaultHeader;
+
   return (
     <>
       <ConfirmDialog />
@@ -29,8 +33,12 @@ const TableComponent = ({
           value={Array.isArray(data) ? data : []}
           header={header}
           paginator
-          rows={10}
-          rowsPerPageOptions={[5, 10, 25, 50]}
+          lazy={typeof onPage === 'function'}
+          rows={rows}
+          first={first}
+          totalRecords={typeof totalRecords === 'number' ? totalRecords : undefined}
+          onPage={onPage || undefined}
+          rowsPerPageOptions={rowsPerPageOptions}
           emptyMessage="No se encontraron registros"
           className="p-datatable-sm"
           stripedRows

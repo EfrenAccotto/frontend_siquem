@@ -12,7 +12,6 @@ import { Dialog } from 'primereact/dialog';
 import useClienteStore from '@/store/useClienteStore';
 import { Button } from 'primereact/button';
 import VentaForm from '@/router/ventas/components/VentaForm';
-import VentaService from '@/router/ventas/services/VentaService';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { extractStockUnit } from '@/utils/unitParser';
 import { normalizePaymentMethod, formatPaymentMethod } from '@/utils/paymentMethod';
@@ -147,6 +146,7 @@ const formatCurrency = (value) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
 const PedidoView = () => {
+  const DEFAULT_ROWS = 60;
   const toast = useRef(null);
   const [showDialog, setShowDialog] = useState(false);
   const [showDetalleDialog, setShowDetalleDialog] = useState(false);
@@ -177,6 +177,8 @@ const PedidoView = () => {
   const [loadingVentaBtn, setLoadingVentaBtn] = useState(false);
   const [pedidoParaVenta, setPedidoParaVenta] = useState(null);
   const [filters, setFilters] = useState({ estado: null, clienteId: null, search: '' });
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, rows: DEFAULT_ROWS, total: 0 });
   const { clientes, fetchClientes } = useClienteStore();
 
   useEffect(() => {
@@ -184,41 +186,59 @@ const PedidoView = () => {
   }, [fetchClientes]);
 
   useEffect(() => {
-    let mounted = true;
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(filters.search.trim());
+      setPagination((prev) => ({ ...prev, page: 1 }));
+    }, 300);
 
-    const fetchPedidos = async () => {
-      setLoading(true);
-      try {
-        const params = buildPedidoParams(filters);
-        const response = await PedidoService.getAll(params);
-        if (!mounted) return;
+    return () => window.clearTimeout(timer);
+  }, [filters.search]);
 
-        if (response.success) {
-          const list = response.data?.results || response.data || [];
-          setPedidos(Array.isArray(list) ? enrichPedidoList(list) : []);
-          setSelectedPedido(null);
-        } else {
-          console.error('Error al obtener pedidos:', response.error);
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar pedidos', life: 3000 });
-        }
-      } catch (error) {
-        if (mounted) {
-          console.error('Error inesperado:', error);
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+  const loadPedidos = async ({
+    page = pagination.page,
+    rows = pagination.rows,
+    searchTerm = debouncedSearch,
+    activeFilters = filters
+  } = {}) => {
+    setLoading(true);
+    try {
+      const params = {
+        ...buildPedidoParams({ ...activeFilters, search: searchTerm }),
+        page,
+        page_size: rows
+      };
+      const response = await PedidoService.getAll(params);
+
+      if (response.success) {
+        const list = response.data || [];
+        setPedidos(Array.isArray(list) ? enrichPedidoList(list) : []);
+        setSelectedPedido(null);
+        setPagination((prev) => ({
+          ...prev,
+          page,
+          rows,
+          total: Number(response.pagination?.count) || 0
+        }));
+      } else {
+        console.error('Error al obtener pedidos:', response.error);
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar pedidos', life: 3000 });
       }
-    };
+    } catch (error) {
+      console.error('Error inesperado:', error);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchPedidos();
-
-    return () => {
-      mounted = false;
-    };
-  }, [filters]);
+  useEffect(() => {
+    loadPedidos({
+      page: pagination.page,
+      rows: pagination.rows,
+      searchTerm: debouncedSearch,
+      activeFilters: filters
+    });
+  }, [filters.estado, filters.clienteId, debouncedSearch, pagination.page, pagination.rows]);
 
   const clienteOptions = useMemo(
     () => (
@@ -310,7 +330,7 @@ const PedidoView = () => {
       const pedidoCompleto = resp.success ? mapPedidoDetalle(resp.data) : mapPedidoDetalle(selectedPedido);
       setPedidoEditando(pedidoCompleto);
       setShowDialog(true);
-    } catch (error) {
+    } catch {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el pedido', life: 3000 });
     } finally {
       setPedidoDialogLoading(false);
@@ -373,7 +393,7 @@ const PedidoView = () => {
           setSelectedPedido(pedidoCompleto);
           setPedidoParaVenta(pedidoCompleto);
         }
-      } catch (_) {
+      } catch {
         // continuar con fallback
       }
       setShowVentaDialog(true);
@@ -412,7 +432,7 @@ const PedidoView = () => {
     if (typeof dateValue === 'string') return dateValue;
     try {
       return dateValue.toISOString().slice(0, 10);
-    } catch (_) {
+    } catch {
       return null;
     }
   };
@@ -456,7 +476,7 @@ const PedidoView = () => {
     }
   };
 
-  const handleGuardar = async (formData, meta = {}) => {
+  const handleGuardar = async (formData) => {
     try {
       if (!pedidoEditando && formData.state === 'cancelled') {
         throw new Error('No se puede crear un pedido ya cancelado.');
@@ -465,12 +485,7 @@ const PedidoView = () => {
       if (pedidoEditando) {
         const response = await PedidoService.update(pedidoEditando.id, formData);
         if (response.success) {
-          const updated = enrichPedido(response.data || { ...pedidoEditando, ...formData });
-          const updatedPedidos = sortByIdDesc(
-            pedidos.map((p) => (p.id !== pedidoEditando.id ? p : { ...p, ...updated }))
-          );
-          setPedidos(updatedPedidos);
-          setSelectedPedido(updated);
+          await loadPedidos();
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido actualizado', life: 3000 });
         } else {
           throw new Error(response.error);
@@ -478,13 +493,8 @@ const PedidoView = () => {
       } else {
         const response = await PedidoService.create(formData);
         if (response.success) {
-          const shippingOverride = meta?.shipping_address_override || null;
-          const createdPedido = enrichPedido(response.data, shippingOverride);
-          setPedidos((prev) => {
-            const next = [createdPedido, ...(prev || []).filter((pedido) => pedido.id !== createdPedido.id)];
-            return sortByIdDesc(next);
-          });
-          setSelectedPedido(createdPedido);
+          setPagination((prev) => ({ ...prev, page: 1 }));
+          await loadPedidos({ page: 1 });
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido creado', life: 3000 });
         } else {
           throw new Error(response.error);
@@ -556,10 +566,7 @@ const PedidoView = () => {
       // Actualizar estado local
       const updatedPedido = enrichPedido({ ...selectedPedido, ...updateResponse.data, state: 'completed' });
       setSelectedPedido(updatedPedido);
-
-      setPedidos((prev) => sortByIdDesc(prev.map((p) =>
-        p.id === selectedPedido.id ? { ...p, ...updatedPedido } : p
-      )));
+      await loadPedidos();
 
       toast.current?.show({
         severity: 'success',
@@ -585,7 +592,7 @@ const PedidoView = () => {
     try {
       const response = await PedidoService.delete(selectedPedido.id);
       if (response.success) {
-        setPedidos((prev) => prev.filter((p) => p.id !== selectedPedido.id));
+        await loadPedidos();
         setSelectedPedido(null);
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido eliminado', life: 3000 });
       } else {
@@ -606,29 +613,6 @@ const PedidoView = () => {
       accept: eliminarSeleccionado
     });
   };
-
-  // Filtro cliente/estado/búsqueda en front para garantizar funcionamiento
-  const filteredPedidos = useMemo(
-    () => (
-      Array.isArray(pedidos)
-        ? pedidos.filter((p) => {
-            const term = (filters.search || '').toLowerCase().trim();
-            if (filters.estado && p.state !== filters.estado) return false;
-            if (filters.clienteId && (p.customer?.id || p.customer_id) !== filters.clienteId) return false;
-            if (!term) return true;
-
-            const nombre = `${p.customer?.first_name || ''} ${p.customer?.last_name || ''}`.toLowerCase();
-            const idMatch = (p.id || '').toString().toLowerCase().includes(term);
-            const obsMatch = (p.observations || '').toLowerCase().includes(term);
-            const fechaMatch = (p.date || '').toString().toLowerCase().includes(term);
-            const nombreMatch = nombre.includes(term);
-
-            return idMatch || obsMatch || fechaMatch || nombreMatch;
-          })
-        : []
-    ),
-    [pedidos, filters]
-  );
 
   const direccionTemplate = (rowData) => {
     if (rowData.shipping_address_str) return rowData.shipping_address_str;
@@ -725,9 +709,20 @@ const PedidoView = () => {
       </div>
 
       <TableComponent
-        data={filteredPedidos}
+        data={pedidos}
         loading={loading}
         columns={columns}
+        rows={pagination.rows}
+        first={(pagination.page - 1) * pagination.rows}
+        totalRecords={pagination.total}
+        rowsPerPageOptions={[10, 25, 50, 60]}
+        onPage={(event) => {
+          setPagination((prev) => ({
+            ...prev,
+            page: Math.floor(event.first / event.rows) + 1,
+            rows: event.rows
+          }));
+        }}
         header={
           <ActionButtons
             showCreate={true}

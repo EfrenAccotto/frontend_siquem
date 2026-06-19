@@ -67,46 +67,65 @@ const verifyCreatedCliente = async (createdResponse) => {
 };
 
 const ClienteView = () => {
+  const DEFAULT_ROWS = 60;
   const [clientes, setClientes] = useState([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [showDialog, setShowDialog] = useState(false);
   const [clienteEditando, setClienteEditando] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState({ page: 1, rows: DEFAULT_ROWS, total: 0 });
   const toast = useRef(null);
 
   useEffect(() => {
-    let mounted = true;
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPagination((prev) => ({ ...prev, page: 1 }));
+    }, 300);
 
-    const fetchClientes = async () => {
-      setLoading(true);
-      try {
-        const response = await ClienteService.getAll();
-        if (!mounted) return;
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-        if (response.success) {
-          const list = response.data.results || response.data || [];
-          setClientes(Array.isArray(list) ? sortClientesByIdDesc(list) : []);
-        } else {
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar clientes', life: 3000 });
-        }
-      } catch {
-        if (mounted) {
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+  const loadClientes = async ({ page = pagination.page, rows = pagination.rows, searchTerm = debouncedSearch } = {}) => {
+    setLoading(true);
+    try {
+      const params = {
+        page,
+        page_size: rows
+      };
+      if (searchTerm) {
+        params.search = searchTerm;
       }
-    };
 
-    fetchClientes();
+      const response = await ClienteService.getAll(params);
+      if (response.success) {
+        const list = response.data || [];
+        setClientes(Array.isArray(list) ? sortClientesByIdDesc(list) : []);
+        setSelectedCliente(null);
+        setPagination((prev) => ({
+          ...prev,
+          page,
+          rows,
+          total: Number(response.pagination?.count) || 0
+        }));
+      } else {
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar clientes', life: 3000 });
+      }
+    } catch {
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  useEffect(() => {
+    loadClientes({
+      page: pagination.page,
+      rows: pagination.rows,
+      searchTerm: debouncedSearch
+    });
+  }, [pagination.page, pagination.rows, debouncedSearch]);
 
   const handleNuevo = () => {
     setClienteEditando(null);
@@ -143,17 +162,13 @@ const ClienteView = () => {
           throw new Error(getErrorDetail(response.error, 'No se pudo actualizar el cliente'));
         }
 
-        setClientes((prev) =>
-          sortClientesByIdDesc(prev.map((clienteItem) =>
-            clienteItem.id === clienteEditando.id ? response.data : clienteItem
-          ))
-        );
+        await loadClientes();
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente actualizado', life: 3000 });
       } else {
         const response = await ClienteService.create(formData);
-        const verifiedCliente = await verifyCreatedCliente(response);
-
-        setClientes((prev) => sortClientesByIdDesc([verifiedCliente, ...(prev || [])]));
+        await verifyCreatedCliente(response);
+        setPagination((prev) => ({ ...prev, page: 1 }));
+        await loadClientes({ page: 1 });
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente guardado correctamente', life: 3000 });
       }
 
@@ -178,7 +193,7 @@ const ClienteView = () => {
         throw new Error(getErrorDetail(response.error, 'No se pudo eliminar el cliente'));
       }
 
-      setClientes((prev) => prev.filter((clienteItem) => clienteItem.id !== selectedCliente.id));
+      await loadClientes();
       setSelectedCliente(null);
       toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente eliminado', life: 3000 });
     } catch (error) {
@@ -198,19 +213,6 @@ const ClienteView = () => {
     });
   };
 
-  const filteredClientes = Array.isArray(clientes)
-    ? clientes.filter((clienteItem) => {
-        const term = search.toLowerCase().trim();
-        if (!term) return true;
-        return (
-          (clienteItem.first_name || '').toLowerCase().includes(term) ||
-          (clienteItem.last_name || '').toLowerCase().includes(term) ||
-          (clienteItem.dni || '').toString().toLowerCase().includes(term) ||
-          (clienteItem.phone_number || '').toLowerCase().includes(term)
-        );
-      })
-    : [];
-
   return (
     <div className="cliente-view h-full">
       <Toast ref={toast} />
@@ -220,11 +222,22 @@ const ClienteView = () => {
       </div>
 
       <TableComponent
-        data={filteredClientes}
+        data={clientes}
         loading={loading}
         columns={Columns}
         selection={selectedCliente}
         onSelectionChange={setSelectedCliente}
+        rows={pagination.rows}
+        first={(pagination.page - 1) * pagination.rows}
+        totalRecords={pagination.total}
+        rowsPerPageOptions={[10, 25, 50, 60]}
+        onPage={(event) => {
+          setPagination((prev) => ({
+            ...prev,
+            page: Math.floor(event.first / event.rows) + 1,
+            rows: event.rows
+          }));
+        }}
         header={
           <ActionButtons
             showCreate={true}

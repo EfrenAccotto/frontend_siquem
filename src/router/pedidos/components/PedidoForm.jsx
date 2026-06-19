@@ -290,7 +290,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
   const loadProductos = async () => {
     try {
-      const resp = await ProductoService.getAll();
+      const resp = await ProductoService.getAll({ page: 1, page_size: 60 });
       if (resp.success) {
         const lista = (resp.data || []).map((prod) => ({
           ...prod,

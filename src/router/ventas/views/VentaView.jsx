@@ -34,6 +34,7 @@ const enrichVenta = (venta = {}, totalFallback = null) => {
 const enrichVentaList = (list = []) => sortByIdDesc(list).map((venta) => enrichVenta(venta));
 
 const VentaView = () => {
+  const DEFAULT_ROWS = 60;
   const toast = useRef(null);
   const [showDialog, setShowDialog] = useState(false);
   const [showDetalleDialog, setShowDetalleDialog] = useState(false);
@@ -43,41 +44,56 @@ const VentaView = () => {
   const [loading, setLoading] = useState(false);
   const [ventaDialogLoading, setVentaDialogLoading] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, rows: DEFAULT_ROWS, total: 0 });
 
   useEffect(() => {
-    let mounted = true;
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPagination((prev) => ({ ...prev, page: 1 }));
+    }, 300);
 
-    const fetchVentas = async () => {
-      setLoading(true);
-      try {
-        const response = await VentaService.getAll();
-        if (!mounted) return;
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-        if (response.success) {
-          const list = response.data.results || response.data || [];
-          setVentas(Array.isArray(list) ? enrichVentaList(list) : []);
-        } else {
-          console.error('Error al obtener ventas:', response.error);
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar ventas', life: 3000 });
-        }
-      } catch (error) {
-        if (mounted) {
-          console.error('Error inesperado:', error);
-          toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
-        }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+  const loadVentas = async ({ page = pagination.page, rows = pagination.rows, searchTerm = debouncedSearch } = {}) => {
+    setLoading(true);
+    try {
+      const params = { page, page_size: rows };
+      if (searchTerm) {
+        params.search = searchTerm;
       }
-    };
 
-    fetchVentas();
+      const response = await VentaService.getAll(params);
+      if (response.success) {
+        const list = response.data || [];
+        setVentas(Array.isArray(list) ? enrichVentaList(list) : []);
+        setSelectedVenta(null);
+        setPagination((prev) => ({
+          ...prev,
+          page,
+          rows,
+          total: Number(response.pagination?.count) || 0
+        }));
+      } else {
+        console.error('Error al obtener ventas:', response.error);
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar ventas', life: 3000 });
+      }
+    } catch (error) {
+      console.error('Error inesperado:', error);
+      toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  useEffect(() => {
+    loadVentas({
+      page: pagination.page,
+      rows: pagination.rows,
+      searchTerm: debouncedSearch
+    });
+  }, [pagination.page, pagination.rows, debouncedSearch]);
 
   const handleNuevo = () => {
     setVentaEditando(null);
@@ -98,7 +114,7 @@ const VentaView = () => {
           const detResp = await VentaService.getDetailsBySaleId(ventaBase.id);
           if (detResp.success) detalleVenta = detResp.data || [];
         }
-      } catch (err) {
+      } catch {
         /* continuar con lo que haya */
       }
 
@@ -119,7 +135,7 @@ const VentaView = () => {
         shipping_address_str: ventaBase.shipping_address_str || formatAddress(addr)
       });
       setShowDialog(true);
-    } catch (error) {
+    } catch {
       // Fallback: intentar abrir con la selección actual
       setVentaEditando(selectedVenta);
       setShowDialog(true);
@@ -163,7 +179,7 @@ const VentaView = () => {
           for (const det of list) {
             if (det.id) await VentaService.deleteDetail(det.id);
           }
-        } catch (err) {
+        } catch {
           /* continuar */
         }
 
@@ -186,6 +202,7 @@ const VentaView = () => {
           const filtered = (prev || []).filter((v) => v.id !== ventaEditando.id);
           return sortByIdDesc([resolvedVenta, ...filtered]);
         });
+        await loadVentas();
 
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta actualizada', life: 3000 });
       } else {
@@ -199,7 +216,6 @@ const VentaView = () => {
         // Crear detalles de venta usando el sale_id devuelto
         const saleId = response.data?.id;
         let normalized = [];
-        let totalNormalized = 0;
         if (saleId && Array.isArray(items) && items.length) {
           // Limpia cualquier detalle existente (defensivo, por si el backend crea por defecto)
           try {
@@ -208,12 +224,11 @@ const VentaView = () => {
             for (const det of list) {
               if (det.id) await VentaService.deleteDetail(det.id);
             }
-          } catch (err) {
+          } catch {
             /* continuar */
           }
 
           normalized = normalizeDetails(saleId)(items);
-          totalNormalized = normalized.reduce((acc, d) => acc + (Number(d.subtotal) || 0), 0);
 
           for (const detailPayload of normalized) {
             const respDetail = await VentaService.createDetail(detailPayload);
@@ -224,15 +239,9 @@ const VentaView = () => {
           }
         }
 
-        // Refrescar desde backend para asegurar que la venta y detalles aparezcan en tabla
-        const single = saleId ? await VentaService.getById(saleId) : null;
-        const resolvedVenta = single?.success
-          ? enrichVenta(single.data, totalNormalized ?? salePayload.total_price)
-          : enrichVenta({ ...response.data, ...salePayload, id: saleId }, totalNormalized ?? salePayload.total_price);
-        setVentas((prev) => {
-          const filtered = (prev || []).filter((v) => v.id !== saleId);
-          return sortByIdDesc([resolvedVenta, ...filtered]);
-        });
+        // Refrescar lista paginada desde backend para asegurar consistencia
+        setPagination((prev) => ({ ...prev, page: 1 }));
+        await loadVentas({ page: 1 });
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta creada correctamente', life: 3000 });
       }
 
@@ -250,13 +259,13 @@ const VentaView = () => {
     try {
       const response = await VentaService.delete(selectedVenta.id);
       if (response.success) {
-        setVentas((prev) => prev.filter((v) => v.id !== selectedVenta.id));
+        await loadVentas();
         setSelectedVenta(null);
         toast.current?.show({ severity: 'success', summary: 'Éxito', detail: 'Venta eliminada', life: 3000 });
       } else {
         throw new Error(response.error);
       }
-    } catch (error) {
+    } catch {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo eliminar la venta', life: 3000 });
     }
   };
@@ -271,29 +280,6 @@ const VentaView = () => {
       accept: eliminarSeleccionado
     });
   };
-
-  const filteredVentas = useMemo(
-    () => (
-      Array.isArray(ventas)
-        ? ventas.filter((v) => {
-            const term = search.toLowerCase().trim();
-            if (!term) return true;
-            const addrText = v.shipping_address_str
-              || (v.shipping_address && formatAddress(v.shipping_address))
-              || (v.order?.shipping_address && formatAddress(v.order.shipping_address))
-              || '';
-            return (
-              (v.order_id || v.order?.id || '').toString().toLowerCase().includes(term) ||
-              (v.date || '').toString().toLowerCase().includes(term) ||
-              (v.total_price || '').toString().toLowerCase().includes(term) ||
-              (v.customer_name || '').toLowerCase().includes(term) ||
-              addrText.toLowerCase().includes(term)
-            );
-          })
-        : []
-    ),
-    [ventas, search]
-  );
 
   const columns = useMemo(() => [
     { field: 'id', header: 'ID', style: { width: '10%' } },
@@ -337,9 +323,20 @@ const VentaView = () => {
       </div>
 
       <TableComponent
-        data={filteredVentas}
+        data={ventas}
         loading={loading}
         columns={columns}
+        rows={pagination.rows}
+        first={(pagination.page - 1) * pagination.rows}
+        totalRecords={pagination.total}
+        rowsPerPageOptions={[10, 25, 50, 60]}
+        onPage={(event) => {
+          setPagination((prev) => ({
+            ...prev,
+            page: Math.floor(event.first / event.rows) + 1,
+            rows: event.rows
+          }));
+        }}
         header={<ActionButtons
           showCreate={true}
           showEdit={true}

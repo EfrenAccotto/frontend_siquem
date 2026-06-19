@@ -19,13 +19,13 @@ const useClienteStore = create((set, getState) => ({
 
     set({ loading: true, error: null });
     try {
-      const response = await ClienteService.getAll();
+      const response = await ClienteService.getAll({ page: 1, page_size: 60 });
       if (!response?.success) {
         set({ error: response?.error || 'Error al obtener clientes', loading: false });
         return [];
       }
 
-      const list = response?.data?.results || response?.data || [];
+      const list = response?.data || [];
       const sorted = Array.isArray(list) ? sortClientesByIdDesc(list) : [];
       set({ clientes: sorted, loading: false, loaded: true });
       return sorted;

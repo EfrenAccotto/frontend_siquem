@@ -105,7 +105,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
 
   const loadProductos = async () => {
     try {
-      const response = await ProductoService.getAll();
+      const response = await ProductoService.getAll({ page: 1, page_size: 60 });
       if (response.success) {
         const list = response.data || [];
         setProductosDisponibles(list);
@@ -119,9 +119,9 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
 
   const loadPedidos = async () => {
     try {
-      const response = await PedidoService.getAll();
+      const response = await PedidoService.getAll({ page: 1, page_size: 60 });
       if (response.success) {
-        const list = response.data?.results || response.data || [];
+        const list = response.data || [];
         setPedidosDisponibles(list);
         return list;
       }
