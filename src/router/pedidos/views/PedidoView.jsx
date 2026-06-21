@@ -145,6 +145,22 @@ const getPedidoTotal = (pedidoItem) => {
 const formatCurrency = (value) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
+const newIdempotencyKey = () => {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+};
+
+const errorDetail = (value, fallback) => {
+  if (typeof value === 'string') return value;
+  if (value?.detail) return value.detail;
+  if (value && typeof value === 'object') return JSON.stringify(value);
+  return fallback;
+};
+
 const PedidoView = () => {
   const DEFAULT_ROWS = 60;
   const toast = useRef(null);
@@ -156,7 +172,8 @@ const PedidoView = () => {
   const [pedidoEditando, setPedidoEditando] = useState(null);
   const [pedidoDetalle, setPedidoDetalle] = useState(null);
   const [detalleLoading, setDetalleLoading] = useState(false);
-  const [pedidoDialogLoading, setPedidoDialogLoading] = useState(false);
+  const [loadingPedido, setLoadingPedido] = useState(false);
+  const [savingPedido, setSavingPedido] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingVenta, setSavingVenta] = useState(false);
   const [loadingRemito, setLoadingRemito] = useState(false);
@@ -174,12 +191,20 @@ const PedidoView = () => {
   const [showLinkDialog, setShowLinkDialog] = useState(false);
 
 
-  const [loadingVentaBtn, setLoadingVentaBtn] = useState(false);
   const [pedidoParaVenta, setPedidoParaVenta] = useState(null);
   const [filters, setFilters] = useState({ estado: null, clienteId: null, search: '' });
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [pagination, setPagination] = useState({ page: 1, rows: DEFAULT_ROWS, total: 0 });
   const { clientes, fetchClientes } = useClienteStore();
+  const savingPedidoRef = useRef(false);
+  const loadingPedidoRef = useRef(false);
+  const savingVentaRef = useRef(false);
+  const pedidoIdempotencyKeyRef = useRef(null);
+  const listRequestSequenceRef = useRef(0);
+  const mutationSequenceRef = useRef(0);
+  const listAbortRef = useRef(null);
+  const saleOpenSequenceRef = useRef(0);
+  const saleOpenAbortRef = useRef(null);
 
   useEffect(() => {
     fetchClientes();
@@ -198,21 +223,36 @@ const PedidoView = () => {
     page = pagination.page,
     rows = pagination.rows,
     searchTerm = debouncedSearch,
-    activeFilters = filters
+    activeFilters = filters,
+    silent = false
   } = {}) => {
-    setLoading(true);
+    const requestSequence = ++listRequestSequenceRef.current;
+    const mutationSequence = mutationSequenceRef.current;
+    listAbortRef.current?.abort();
+    const controller = new AbortController();
+    listAbortRef.current = controller;
+    if (!silent) setLoading(true);
     try {
       const params = {
         ...buildPedidoParams({ ...activeFilters, search: searchTerm }),
         page,
         page_size: rows
       };
-      const response = await PedidoService.getAll(params);
+      const response = await PedidoService.getAll(params, { signal: controller.signal });
+
+      if (
+        requestSequence !== listRequestSequenceRef.current
+        || mutationSequence !== mutationSequenceRef.current
+      ) return;
 
       if (response.success) {
         const list = response.data || [];
-        setPedidos(Array.isArray(list) ? enrichPedidoList(list) : []);
-        setSelectedPedido(null);
+        const enriched = Array.isArray(list) ? enrichPedidoList(list) : [];
+        setPedidos(enriched);
+        setSelectedPedido((current) => {
+          if (!silent || !current) return null;
+          return enriched.find((item) => item.id === current.id) || current;
+        });
         setPagination((prev) => ({
           ...prev,
           page,
@@ -224,11 +264,26 @@ const PedidoView = () => {
         toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error al cargar pedidos', life: 3000 });
       }
     } catch (error) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
       console.error('Error inesperado:', error);
       toast.current?.show({ severity: 'error', summary: 'Error', detail: 'Error inesperado', life: 3000 });
     } finally {
-      setLoading(false);
+      if (!silent && requestSequence === listRequestSequenceRef.current) setLoading(false);
     }
+  };
+
+  const updatePedidoLocally = (rawPedido, { prepend = false } = {}) => {
+    const updated = enrichPedido(rawPedido);
+    mutationSequenceRef.current += 1;
+    setPedidos((current) => {
+      const exists = current.some((item) => item.id === updated.id);
+      const next = exists
+        ? current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+        : (prepend ? [updated, ...current] : current);
+      return sortByIdDesc(next);
+    });
+    setSelectedPedido(updated);
+    return updated;
   };
 
   useEffect(() => {
@@ -238,6 +293,8 @@ const PedidoView = () => {
       searchTerm: debouncedSearch,
       activeFilters: filters
     });
+  // loadPedidos usa refs de secuencia para descartar respuestas obsoletas.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.estado, filters.clienteId, debouncedSearch, pagination.page, pagination.rows]);
 
   const clienteOptions = useMemo(
@@ -268,7 +325,9 @@ const PedidoView = () => {
   };
 
   const handleNuevo = () => {
+    if (savingPedidoRef.current) return;
     setPedidoEditando(null);
+    pedidoIdempotencyKeyRef.current = newIdempotencyKey();
     setShowDialog(true);
   };
 
@@ -323,8 +382,9 @@ const PedidoView = () => {
   };
 
   const handleEditar = async () => {
-    if (!selectedPedido) return;
-    setPedidoDialogLoading(true);
+    if (!selectedPedido || loadingPedidoRef.current) return;
+    loadingPedidoRef.current = true;
+    setLoadingPedido(true);
     try {
       const resp = await PedidoService.getById(selectedPedido.id);
       const pedidoCompleto = resp.success ? mapPedidoDetalle(resp.data) : mapPedidoDetalle(selectedPedido);
@@ -333,7 +393,8 @@ const PedidoView = () => {
     } catch {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el pedido', life: 3000 });
     } finally {
-      setPedidoDialogLoading(false);
+      loadingPedidoRef.current = false;
+      setLoadingPedido(false);
     }
   };
 
@@ -359,7 +420,7 @@ const PedidoView = () => {
   };
 
   const handleGenerarVenta = async () => {
-    if (!selectedPedido || selectedPedido.state === 'cancelled') return;
+    if (!selectedPedido || selectedPedido.state === 'cancelled' || loadingPedidoRef.current) return;
     // Verificar si el pedido ya está completado
     if (selectedPedido.state === 'completed') {
       toast.current?.show({
@@ -371,14 +432,21 @@ const PedidoView = () => {
       return;
     }
 
-    setLoadingVentaBtn(true);
+    const orderId = selectedPedido.id;
+    const requestSequence = ++saleOpenSequenceRef.current;
+    saleOpenAbortRef.current?.abort();
+    const controller = new AbortController();
+    saleOpenAbortRef.current = controller;
+    loadingPedidoRef.current = true;
+    setLoadingPedido(true);
     try {
-      // fallback inicial en caso de que la carga detallada falle
-      setPedidoParaVenta(mapPedidoDetalle(selectedPedido));
+      let loadedSuccessfully = false;
 
       try {
-        const resp = await PedidoService.getById(selectedPedido.id);
+        const resp = await PedidoService.getById(orderId, { signal: controller.signal });
+        if (requestSequence !== saleOpenSequenceRef.current) return;
         if (resp.success) {
+          loadedSuccessfully = true;
           const pedidoCompleto = mapPedidoDetalle(resp.data);
           // Verificar nuevamente con datos actualizados
           if (pedidoCompleto.state === 'completed') {
@@ -394,11 +462,19 @@ const PedidoView = () => {
           setPedidoParaVenta(pedidoCompleto);
         }
       } catch {
-        // continuar con fallback
+        // El listado no contiene detalles; no se abre un formulario incompleto.
       }
-      setShowVentaDialog(true);
+      if (!loadedSuccessfully) {
+        setPedidoParaVenta(null);
+        toast.current?.show({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar el pedido', life: 3000 });
+        return;
+      }
+      if (requestSequence === saleOpenSequenceRef.current) setShowVentaDialog(true);
     } finally {
-      setLoadingVentaBtn(false);
+      if (requestSequence === saleOpenSequenceRef.current) {
+        loadingPedidoRef.current = false;
+        setLoadingPedido(false);
+      }
     }
   };
 
@@ -477,6 +553,9 @@ const PedidoView = () => {
   };
 
   const handleGuardar = async (formData) => {
+    if (savingPedidoRef.current) return;
+    savingPedidoRef.current = true;
+    setSavingPedido(true);
     try {
       if (!pedidoEditando && formData.state === 'cancelled') {
         throw new Error('No se puede crear un pedido ya cancelado.');
@@ -485,31 +564,40 @@ const PedidoView = () => {
       if (pedidoEditando) {
         const response = await PedidoService.update(pedidoEditando.id, formData);
         if (response.success) {
-          await loadPedidos();
+          updatePedidoLocally(response.data);
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido actualizado', life: 3000 });
         } else {
-          throw new Error(response.error);
+          throw new Error(errorDetail(response.error, 'No se pudo actualizar el pedido'));
         }
       } else {
-        const response = await PedidoService.create(formData);
+        const idempotencyKey = pedidoIdempotencyKeyRef.current || newIdempotencyKey();
+        pedidoIdempotencyKeyRef.current = idempotencyKey;
+        const response = await PedidoService.create(formData, idempotencyKey);
         if (response.success) {
           setPagination((prev) => ({ ...prev, page: 1 }));
-          await loadPedidos({ page: 1 });
+          updatePedidoLocally(response.data, { prepend: true });
+          pedidoIdempotencyKeyRef.current = null;
           toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Pedido creado', life: 3000 });
         } else {
-          throw new Error(response.error);
+          throw new Error(errorDetail(response.error, 'No se pudo crear el pedido'));
         }
       }
 
       setShowDialog(false);
       setPedidoEditando(null);
+      void loadPedidos({ page: pedidoEditando ? pagination.page : 1, silent: true });
     } catch (error) {
       toast.current?.show({ severity: 'error', summary: 'Error', detail: error.message, life: 3000 });
+    } finally {
+      savingPedidoRef.current = false;
+      setSavingPedido(false);
     }
   };
 
   const handleGuardarVenta = async (ventaData, items = []) => {
-    if (!selectedPedido) return;
+    const targetPedido = pedidoParaVenta;
+    if (!targetPedido || savingVentaRef.current) return;
+    savingVentaRef.current = true;
     try {
       setSavingVenta(true);
 
@@ -532,31 +620,13 @@ const PedidoView = () => {
 
       // Payload con los productos del formulario (pueden ser diferentes a los originales)
       const updatePayload = {
-        state: 'completed',
         detail: detallesParaEnviar // Productos del formulario de venta
       };
 
       const paymentMethod = normalizePaymentMethod(ventaData?.payment_method || ventaData?.paymentMethod);
       updatePayload.payment_method = paymentMethod;
 
-      // Campos adicionales necesarios
-      if (selectedPedido.customer_id || selectedPedido.customer?.id) {
-        updatePayload.customer_id = selectedPedido.customer_id || selectedPedido.customer?.id;
-      }
-
-      if (selectedPedido.date) {
-        updatePayload.date = selectedPedido.date;
-      }
-
-      if (selectedPedido.observations !== undefined) {
-        updatePayload.observations = selectedPedido.observations || '';
-      }
-
-      if (selectedPedido.shipping_address_id !== undefined) {
-        updatePayload.shipping_address_id = selectedPedido.shipping_address_id;
-      }
-
-      const updateResponse = await PedidoService.update(selectedPedido.id, updatePayload);
+      const updateResponse = await PedidoService.complete(targetPedido.id, updatePayload);
 
       if (!updateResponse.success) {
         const err = typeof updateResponse.error === 'string' ? updateResponse.error : JSON.stringify(updateResponse.error);
@@ -564,9 +634,7 @@ const PedidoView = () => {
       }
 
       // Actualizar estado local
-      const updatedPedido = enrichPedido({ ...selectedPedido, ...updateResponse.data, state: 'completed' });
-      setSelectedPedido(updatedPedido);
-      await loadPedidos();
+      updatePedidoLocally(updateResponse.data.order);
 
       toast.current?.show({
         severity: 'success',
@@ -576,13 +644,15 @@ const PedidoView = () => {
       });
 
       setShowVentaDialog(false);
+      setPedidoParaVenta(null);
+      void loadPedidos({ silent: true });
 
     } catch (error) {
       const detail = error?.message || 'No se pudo completar el pedido. Revisa los datos e inténtalo nuevamente.';
       toast.current?.show({ severity: 'error', summary: 'Error', detail, life: 4000 });
     } finally {
+      savingVentaRef.current = false;
       setSavingVenta(false);
-      setPedidoParaVenta(null);
     }
   };
 
@@ -791,27 +861,34 @@ const PedidoView = () => {
                   icon="pi pi-shopping-cart"
                   className={`p-button-raised ${selectedPedido?.state === 'completed' ? 'p-button-success' : 'p-button-secondary'}`}
                   onClick={handleGenerarVenta}
-                  disabled={!selectedPedido || loadingVentaBtn || selectedPedido?.state === 'cancelled' || selectedPedido?.state === 'completed'}
-                  loading={loadingVentaBtn}
+                  disabled={!selectedPedido || loadingPedido || selectedPedido?.state === 'cancelled' || selectedPedido?.state === 'completed'}
+                  loading={loadingPedido}
                 />
               </>
             }
           />
         }
         selection={selectedPedido}
-        onSelectionChange={setSelectedPedido}
+        onSelectionChange={(pedido) => {
+          saleOpenSequenceRef.current += 1;
+          saleOpenAbortRef.current?.abort();
+          loadingPedidoRef.current = false;
+          setLoadingPedido(false);
+          setSelectedPedido(pedido);
+        }}
       />
 
       <PedidoForm
         visible={showDialog}
         pedido={pedidoEditando}
         onHide={() => {
+          if (savingPedidoRef.current) return;
           setShowDialog(false);
           setPedidoEditando(null);
-          setPedidoDialogLoading(false);
+          pedidoIdempotencyKeyRef.current = null;
         }}
         onSave={handleGuardar}
-        loading={pedidoDialogLoading}
+        loading={savingPedido}
       />
 
       <DetallePedidoDialog
@@ -825,9 +902,11 @@ const PedidoView = () => {
       />
 
       <VentaForm
+        key={pedidoParaVenta?.id || 'order-sale'}
         visible={showVentaDialog}
         pedido={pedidoParaVenta}
         onHide={() => {
+          if (savingVentaRef.current) return;
           setShowVentaDialog(false);
           setPedidoParaVenta(null);
         }}

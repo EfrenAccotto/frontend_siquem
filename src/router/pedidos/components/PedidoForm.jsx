@@ -45,6 +45,7 @@ const getErrorDetail = (errorValue, fallbackMessage) => {
 const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
   const { clientes, fetchClientes } = useClienteStore();
   const toast = useRef(null);
+  const submitLockRef = useRef(false);
 
   const getEstadoOptions = () => {
     if (!pedido) {
@@ -156,23 +157,6 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     return [loc.name, prov].filter(Boolean).join(', ');
   };
 
-  const formatZona = (zona) => zona?.name || '';
-
-  const buildDireccionEntrega = (data, cliente) => {
-    const calle = (data.envioCalle || '').trim();
-    const numero = (data.envioNumero || '').trim();
-    const dir = [calle, numero].filter(Boolean).join(' ').trim();
-    const loc = formatLocalidad(data.envioLocalidad);
-    const zona = formatZona(data.envioZona);
-
-    if (dir || loc || zona) {
-      const base = [dir, loc].filter(Boolean).join(' - ');
-      return `${base}${zona ? ` (Zona: ${zona})` : ''}`.trim();
-    }
-
-    return formatDireccionCliente(cliente);
-  };
-
   const isUnitProduct = (producto) => extractStockUnit(producto) === 'unit';
 
   const normalizeCantidad = (producto, value) => {
@@ -254,6 +238,8 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     };
 
     initForm();
+  // Se reinicia solo al abrir o cambiar de pedido; las colecciones se resuelven dentro de initForm.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, fetchClientes, pedido]);
 
   useEffect(() => {
@@ -310,6 +296,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
     `${cliente?.first_name || ''} ${cliente?.last_name || ''}`.trim() || cliente?.nombreCompleto || cliente?.name || 'Sin nombre';
 
   const handleSubmit = async () => {
+    if (loading || submitLockRef.current) return;
     if (!formData.cliente) return;
 
     if (!pedido && formData.estado === 'cancelled') {
@@ -337,8 +324,9 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       return;
     }
 
-    let shippingAddressId = formData.cliente?.address?.id || null;
-    const direccionEntrega = buildDireccionEntrega(formData, formData.cliente);
+    const shippingAddressId = formData.cliente?.address?.id || null;
+    let shippingAddressData;
+    let zoneId;
 
     if (formData.usarEnvioPersonalizado) {
       const newErrors = {};
@@ -352,43 +340,35 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
         return;
       }
 
-      const addressPayload = {
+      shippingAddressData = {
         street: formData.envioCalle.trim(),
         number: formData.envioNumero.trim(),
         locality_id: formData.envioLocalidad.id
       };
-
-      const createdAddress = await UbicacionService.createAddress(addressPayload);
-      if (!createdAddress.success) {
-        return;
-      }
-
-      shippingAddressId = createdAddress.data?.id || null;
-      if (shippingAddressId && formData.envioZona?.id) {
-        await UbicacionService.createZoneAddress({
-          zone_id: formData.envioZona.id,
-          address_id: shippingAddressId
-        });
-      }
+      zoneId = formData.envioZona.id;
     }
-
-    const observacionesConEnvio = [formData.observaciones, formData.usarEnvioPersonalizado ? `Entrega: ${direccionEntrega}` : '']
-      .filter(Boolean)
-      .join('\n');
 
     const payload = {
       customer_id: formData.cliente.id || formData.cliente,
-      observations: observacionesConEnvio,
+      observations: formData.observaciones || '',
       date: formData.fechaPedido?.toISOString?.().slice(0, 10) || formData.fechaPedido,
       state: formData.estado || 'pending',
       payment_method: normalizePaymentMethod(formData.formaPago),
-      shipping_address_id: shippingAddressId,
+      shipping_address_id: formData.usarEnvioPersonalizado ? null : shippingAddressId,
       detail: detailItems
     };
 
-    onSave(payload, {
-      shipping_address_override: formData.usarEnvioPersonalizado ? direccionEntrega : null
-    });
+    if (shippingAddressData) {
+      payload.shipping_address_data = shippingAddressData;
+      payload.zone_id = zoneId;
+    }
+
+    submitLockRef.current = true;
+    try {
+      await onSave(payload);
+    } finally {
+      submitLockRef.current = false;
+    }
   };
 
   const handleCrearClienteDesdePedido = async (clientePayload) => {
@@ -462,12 +442,12 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
   const footer = (
     <div className="flex justify-content-end gap-2">
-      <Button label="Cancelar" icon="pi pi-times" onClick={onHide} className="p-button-text" />
+      <Button label="Cancelar" icon="pi pi-times" onClick={onHide} className="p-button-text" disabled={loading} />
       <Button
         label="Guardar Pedido"
         icon="pi pi-check"
         onClick={handleSubmit}
-        disabled={!formData.cliente || !formData.items?.length}
+        disabled={loading || !formData.cliente || !formData.items?.length}
         loading={loading}
       />
     </div>
@@ -481,7 +461,10 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       modal
       className="p-fluid"
       footer={footer}
-      onHide={onHide}
+      closable={!loading}
+      onHide={() => {
+        if (!loading) onHide();
+      }}
     >
       <Toast ref={toast} />
 
