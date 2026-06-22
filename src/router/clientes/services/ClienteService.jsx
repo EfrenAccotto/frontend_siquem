@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { fetchPage } from '@/utils/fetchPage';
+import { API_BASE_URL } from '../../../config/runtimeEnv';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = API_BASE_URL;
 const CLIENTES_ENDPOINT = `${BASE_URL}/customer`;
 const ZONES_BY_LOCALITY_ENDPOINT = `${BASE_URL}/zones/by-locality`;
 

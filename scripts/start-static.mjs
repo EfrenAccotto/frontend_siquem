@@ -1,0 +1,20 @@
+import { spawn } from 'node:child_process';
+
+const port = process.env.PORT || '3000';
+const child = spawn(
+  'npx',
+  ['serve', '-s', 'dist', '-l', `tcp://0.0.0.0:${port}`],
+  {
+    stdio: 'inherit',
+    shell: process.platform === 'win32'
+  }
+);
+
+child.on('exit', (code, signal) => {
+  if (signal) {
+    process.kill(process.pid, signal);
+    return;
+  }
+
+  process.exit(code ?? 0);
+});

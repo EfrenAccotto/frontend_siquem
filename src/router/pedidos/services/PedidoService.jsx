@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { fetchPage } from '@/utils/fetchPage';
+import { API_BASE_URL } from '../../../config/runtimeEnv';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = API_BASE_URL;
 const PEDIDOS_ENDPOINT = `${BASE_URL}/order`;
 
 class PedidoService {
