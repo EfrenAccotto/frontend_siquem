@@ -1,30 +1,13 @@
-FROM node:20-alpine AS build
+FROM node:20-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 COPY . .
 
-ARG VITE_API_BASE_URL=/api/v1
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+EXPOSE 5173
 
-RUN npm run build
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
-FROM node:20-alpine AS runtime
-
-WORKDIR /app
-ENV NODE_ENV=production
-
-COPY --from=build /app/package*.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/scripts ./scripts
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-
-RUN chmod +x ./docker-entrypoint.sh
-
-EXPOSE 3000
-
-CMD ["./docker-entrypoint.sh"]
