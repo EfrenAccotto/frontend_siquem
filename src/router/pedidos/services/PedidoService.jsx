@@ -1,16 +1,17 @@
 import axios from 'axios';
-import { fetchAllPages } from '@/utils/fetchAllPages';
+import { fetchPage } from '@/utils/fetchPage';
+import { API_BASE_URL } from '../../../config/runtimeEnv';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = API_BASE_URL;
 const PEDIDOS_ENDPOINT = `${BASE_URL}/order`;
 
 class PedidoService {
-  static async getAll(params = {}) {
+  static async getAll(params = {}, options = {}) {
     const baseUrl = `${PEDIDOS_ENDPOINT}/`;
     const query = { ordering: '-id', ...params };
 
     try {
-      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      const { data, pagination, status } = await fetchPage(baseUrl, query, options);
       return { success: true, data, pagination, status };
     } catch (error) {
       return {
@@ -21,9 +22,9 @@ class PedidoService {
     }
   }
 
-  static async getById(id) {
+  static async getById(id, options = {}) {
     try {
-      const response = await axios.get(`${PEDIDOS_ENDPOINT}/${id}/`);
+      const response = await axios.get(`${PEDIDOS_ENDPOINT}/${id}/`, options);
       return { success: true, data: response.data, status: response.status };
     } catch (error) {
       return {
@@ -34,9 +35,11 @@ class PedidoService {
     }
   }
 
-  static async create(pedidoData) {
+  static async create(pedidoData, idempotencyKey = null) {
     try {
-      const response = await axios.post(`${PEDIDOS_ENDPOINT}/`, pedidoData);
+      const response = await axios.post(`${PEDIDOS_ENDPOINT}/`, pedidoData, {
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined
+      });
       return { success: true, data: response.data, status: response.status };
     } catch (error) {
       return {
@@ -55,6 +58,19 @@ class PedidoService {
       return {
         success: false,
         error: error.response?.data || `Error al actualizar pedido ${id}`,
+        status: error.response?.status || 500
+      };
+    }
+  }
+
+  static async complete(id, completionData) {
+    try {
+      const response = await axios.post(`${PEDIDOS_ENDPOINT}/${id}/complete/`, completionData);
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || `Error al completar pedido ${id}`,
         status: error.response?.status || 500
       };
     }

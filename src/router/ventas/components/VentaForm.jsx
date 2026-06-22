@@ -5,7 +5,7 @@ import { Button } from 'primereact/button';
 import { InputNumber } from 'primereact/inputnumber';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import useClienteStore from '@/store/useClienteStore';
 import ProductoService from '@/router/productos/services/ProductoService';
 import PedidoService from '@/router/pedidos/services/PedidoService';
@@ -70,6 +70,8 @@ const recalcTotal = (itemsList = []) =>
 const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = null }) => {
   const { clientes, fetchClientes } = useClienteStore();
   const isVentaCompleted = true;
+  const isOrderMode = Boolean(pedido) && !venta;
+  const submitLockRef = useRef(false);
   const [productosDisponibles, setProductosDisponibles] = useState([]);
   const [pedidosDisponibles, setPedidosDisponibles] = useState([]);
   const [formData, setFormData] = useState({
@@ -105,7 +107,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
 
   const loadProductos = async () => {
     try {
-      const response = await ProductoService.getAll();
+      const response = await ProductoService.getAll({ page: 1, page_size: 60 });
       if (response.success) {
         const list = response.data || [];
         setProductosDisponibles(list);
@@ -119,9 +121,9 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
 
   const loadPedidos = async () => {
     try {
-      const response = await PedidoService.getAll();
+      const response = await PedidoService.getAll({ page: 1, page_size: 60 });
       if (response.success) {
-        const list = response.data?.results || response.data || [];
+        const list = response.data || [];
         setPedidosDisponibles(list);
         return list;
       }
@@ -160,6 +162,30 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     let mounted = true;
 
     const init = async () => {
+      const baseForm = {
+        cliente: null,
+        fecha: new Date(),
+        formaPago: DEFAULT_PAYMENT_METHOD,
+        items: [],
+        pedido: null
+      };
+
+      if (isOrderMode) {
+        setFormData({
+          ...baseForm,
+          cliente: pedido.customer || pedido.cliente || null,
+          fecha: pedido.date ? new Date(pedido.date) : new Date(),
+          formaPago: normalizePaymentMethod(pedido.payment_method),
+          items: buildItemsFromPedido(pedido),
+          pedido
+        });
+        setProductosDisponibles([]);
+        setPedidosDisponibles([]);
+        setSelectedProducto(null);
+        setCantidad(1);
+        return;
+      }
+
       const [fetchedClientes, productos, pedidos] = await Promise.all([
         fetchClientes(),
         loadProductos(),
@@ -169,14 +195,6 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       if (!mounted) return;
 
       const clientesList = Array.isArray(fetchedClientes) && fetchedClientes.length ? fetchedClientes : clientes;
-      const baseForm = {
-        cliente: null,
-        fecha: new Date(),
-        formaPago: DEFAULT_PAYMENT_METHOD,
-        items: [],
-        pedido: null
-      };
-
       const findPedido = (pedidoId) =>
         Array.isArray(pedidos) ? pedidos.find((pedidoItem) => pedidoItem.id === pedidoId) || null : null;
 
@@ -251,7 +269,9 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     return () => {
       mounted = false;
     };
-  }, [visible, venta?.id, pedido?.id]);
+  // El formulario se reinicia por identidad; en modo pedido no consulta catalogos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, venta?.id, pedido?.id, isOrderMode]);
 
   const handleAddItem = () => {
     if (isVentaCompleted) return;
@@ -298,7 +318,8 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (loading || submitLockRef.current) return;
     const pedidoTarget = formData.pedido || pedido;
     if (!pedidoTarget?.id || formData.items.length === 0) {
       return;
@@ -311,7 +332,12 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       date: formData.fecha?.toISOString?.().slice(0, 10) || formData.fecha,
       payment_method: normalizePaymentMethod(formData.formaPago)
     };
-    onSave(payload, formData.items);
+    submitLockRef.current = true;
+    try {
+      await onSave(payload, formData.items);
+    } finally {
+      submitLockRef.current = false;
+    }
   };
 
   const precioTemplate = (rowData) => {
@@ -326,19 +352,19 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(subtotal);
   };
 
-  const pedidoOptions = useMemo(
-    () => (pedidosDisponibles || []).map((pedidoItem) => ({ label: pedidoLabel(pedidoItem), value: pedidoItem })),
-    [pedidosDisponibles]
-  );
+  const pedidoOptions = (pedidosDisponibles || []).map((pedidoItem) => ({
+    label: pedidoLabel(pedidoItem),
+    value: pedidoItem
+  }));
 
   const footer = (
     <div className="flex justify-content-end gap-2">
-      <Button label="Cancelar" icon="pi pi-times" onClick={onHide} className="p-button-text" />
+      <Button label="Cancelar" icon="pi pi-times" onClick={onHide} className="p-button-text" disabled={loading} />
       <Button
         label="Guardar Venta"
         icon="pi pi-check"
         onClick={handleSubmit}
-        disabled={formData.items.length === 0 || !(formData.pedido || pedido)}
+        disabled={loading || formData.items.length === 0 || !(formData.pedido || pedido)}
         loading={loading}
       />
     </div>
@@ -352,7 +378,10 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
       modal
       className="p-fluid"
       footer={footer}
-      onHide={onHide}
+      closable={!loading}
+      onHide={() => {
+        if (!loading) onHide();
+      }}
     >
       <div className="grid">
         <div className="col-12 md:col-6">

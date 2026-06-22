@@ -1,16 +1,33 @@
-# React + Vite
+# Frontend Siquem
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Build local:
 
-Currently, two official plugins are available:
+```bash
+npm install
+npm run build
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Run local in production mode:
 
-## React Compiler
+```bash
+npm start
+```
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+Docker production:
 
-## Expanding the ESLint configuration
+```bash
+docker build -t frontend-siquem .
+docker run -p 3000:3000 -e PORT=3000 -e VITE_API_BASE_URL=https://tu-backend-publico/api/v1 frontend-siquem
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+En Railway configura estas variables en el servicio del frontend:
+
+```env
+VITE_API_BASE_URL=https://tu-backend-publico/api/v1
+```
+
+No es necesario definir `PORT`: Railway lo inyecta al iniciar el contenedor. El
+entrypoint genera `dist/env.js` en runtime, por lo que un cambio en
+`VITE_API_BASE_URL` no requiere recompilar el bundle de Vite. La URL debe ser la
+URL publica del backend, accesible desde el navegador. Si no se define, el
+frontend usa `/api/v1` en su propio dominio.

@@ -1,7 +1,8 @@
 import axios from 'axios';
-import { fetchAllPages } from '@/utils/fetchAllPages';
+import { fetchPage } from '@/utils/fetchPage';
+import { API_BASE_URL } from '../../../config/runtimeEnv';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const BASE_URL = API_BASE_URL;
 const CLIENTES_ENDPOINT = `${BASE_URL}/customer`;
 const ZONES_BY_LOCALITY_ENDPOINT = `${BASE_URL}/zones/by-locality`;
 
@@ -11,7 +12,7 @@ class ClienteService {
     const query = { ordering: '-id', ...params };
 
     try {
-      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      const { data, pagination, status } = await fetchPage(baseUrl, query);
       return { success: true, data, pagination, status };
     } catch (error) {
       return {
