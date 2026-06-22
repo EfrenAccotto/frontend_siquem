@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "node ./scripts/start-static.mjs",
+    "start": "serve -s dist -l 3000",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

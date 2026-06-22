@@ -1,11 +1,8 @@
 node_modules
 dist
+coverage
 .git
-.gitignore
 .env
 .env.*
-coverage
-tmp*
-*.log
-.vscode
-.idea
+!.env.example
+npm-debug.log*
