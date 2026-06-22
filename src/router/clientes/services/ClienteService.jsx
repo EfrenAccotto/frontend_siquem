@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { fetchAllPages } from '@/utils/fetchAllPages';
+import { fetchPage } from '@/utils/fetchPage';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const CLIENTES_ENDPOINT = `${BASE_URL}/customer`;
@@ -11,7 +11,7 @@ class ClienteService {
     const query = { ordering: '-id', ...params };
 
     try {
-      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      const { data, pagination, status } = await fetchPage(baseUrl, query);
       return { success: true, data, pagination, status };
     } catch (error) {
       return {

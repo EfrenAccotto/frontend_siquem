@@ -172,25 +172,14 @@ const VentaView = () => {
         const response = await VentaService.update(ventaEditando.id, salePayload);
         if (!response.success) throw new Error(response.error);
 
-        // Reemplazar detalles: eliminar existentes y crear los nuevos
-        try {
-          const existing = await VentaService.getDetailsBySaleId(ventaEditando.id);
-          const list = existing?.data || [];
-          for (const det of list) {
-            if (det.id) await VentaService.deleteDetail(det.id);
-          }
-        } catch {
-          /* continuar */
-        }
-
         const normalized = normalizeDetails(ventaEditando.id)(items);
         const totalNormalized = normalized.reduce((acc, d) => acc + (Number(d.subtotal) || 0), 0);
-        for (const detailPayload of normalized) {
-          const respDetail = await VentaService.createDetail(detailPayload);
-          if (!respDetail.success) {
-            const errDet = typeof respDetail.error === 'string' ? respDetail.error : JSON.stringify(respDetail.error);
-            throw new Error(errDet || 'No se pudo guardar un detalle de venta');
-          }
+        const detailResponse = await VentaService.replaceDetails(ventaEditando.id, normalized);
+        if (!detailResponse.success) {
+          const errorDetail = typeof detailResponse.error === 'string'
+            ? detailResponse.error
+            : JSON.stringify(detailResponse.error);
+          throw new Error(errorDetail || 'No se pudieron guardar los detalles de venta');
         }
 
         // Refrescar venta puntual y lista para asegurar consistencia
@@ -217,25 +206,13 @@ const VentaView = () => {
         const saleId = response.data?.id;
         let normalized = [];
         if (saleId && Array.isArray(items) && items.length) {
-          // Limpia cualquier detalle existente (defensivo, por si el backend crea por defecto)
-          try {
-            const existing = await VentaService.getDetailsBySaleId(saleId);
-            const list = existing?.data || [];
-            for (const det of list) {
-              if (det.id) await VentaService.deleteDetail(det.id);
-            }
-          } catch {
-            /* continuar */
-          }
-
           normalized = normalizeDetails(saleId)(items);
-
-          for (const detailPayload of normalized) {
-            const respDetail = await VentaService.createDetail(detailPayload);
-            if (!respDetail.success) {
-              const errDet = typeof respDetail.error === 'string' ? respDetail.error : JSON.stringify(respDetail.error);
-              throw new Error(errDet || 'No se pudo crear un detalle de venta');
-            }
+          const detailResponse = await VentaService.replaceDetails(saleId, normalized);
+          if (!detailResponse.success) {
+            const errorDetail = typeof detailResponse.error === 'string'
+              ? detailResponse.error
+              : JSON.stringify(detailResponse.error);
+            throw new Error(errorDetail || 'No se pudieron crear los detalles de venta');
           }
         }
 

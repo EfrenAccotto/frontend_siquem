@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { fetchAllPages } from '@/utils/fetchAllPages';
+import { fetchPage } from '@/utils/fetchPage';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const VENTAS_ENDPOINT = `${BASE_URL}/sale`;
@@ -11,7 +11,7 @@ class VentaService {
     const query = { ordering: '-id', ...params };
 
     try {
-      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      const { data, pagination, status } = await fetchPage(baseUrl, query);
       return { success: true, data, pagination, status };
     } catch (error) {
       return { success: false, error: error.response?.data || 'Error al obtener ventas', status: error.response?.status || 500 };
@@ -89,6 +89,19 @@ class VentaService {
       return { success: true, data: response.data, status: response.status };
     } catch (error) {
       return { success: false, error: error.response?.data || `Error al actualizar detalle ${detailId}`, status: error.response?.status || 500 };
+    }
+  }
+
+  static async replaceDetails(saleId, details) {
+    try {
+      const response = await axios.put(`${VENTAS_ENDPOINT}/${saleId}/details/`, { details });
+      return { success: true, data: response.data, status: response.status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || 'Error al reemplazar los detalles de venta',
+        status: error.response?.status || 500
+      };
     }
   }
 }

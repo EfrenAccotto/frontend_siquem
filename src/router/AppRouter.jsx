@@ -1,23 +1,30 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import ClienteRouter from './clientes/ClienteRouter';
-import ProductoRouter from './productos/ProductoRouter';
-import VentaRouter from './ventas/VentaRouter';
-import PedidoRouter from './pedidos/PedidoRouter';
-import InicioRouter from "./inicio/InicioRouter";
-import ReporteRouter from "./reportes/ReporteRouter";
-import ListadoPesajesView from './pedidos/views/ListadoPesajesView';
 import Navbar from '../components/layout/Navbar';
 import Sidebar from '../components/layout/Sidebar';
+import Loader from '../components/ux/Loader';
 import '../assets/css/footer.css';
 
-const AppRouter = () => {
-  return (
-    <Router>
+const ClienteRouter = lazy(() => import('./clientes/ClienteRouter'));
+const ProductoRouter = lazy(() => import('./productos/ProductoRouter'));
+const VentaRouter = lazy(() => import('./ventas/VentaRouter'));
+const PedidoRouter = lazy(() => import('./pedidos/PedidoRouter'));
+const InicioRouter = lazy(() => import('./inicio/InicioRouter'));
+const ReporteRouter = lazy(() => import('./reportes/ReporteRouter'));
+const ListadoPesajesView = lazy(() => import('./pedidos/views/ListadoPesajesView'));
+
+const RouteFallback = () => (
+  <div className="flex justify-content-center align-items-center min-h-screen">
+    <Loader />
+  </div>
+);
+
+const AppRouter = () => (
+  <Router>
+    <Suspense fallback={<RouteFallback />}>
       <Routes>
-        {/* Ruta para Operario (Sin Navbar/Sidebar) */}
         <Route path="/operario/pesajes" element={<ListadoPesajesView />} />
 
-        {/* Aplicación Principal */}
         <Route path="/*" element={
           <>
             <Navbar />
@@ -37,8 +44,8 @@ const AppRouter = () => {
           </>
         } />
       </Routes>
-    </Router>
-  );
-};
+    </Suspense>
+  </Router>
+);
 
 export default AppRouter;

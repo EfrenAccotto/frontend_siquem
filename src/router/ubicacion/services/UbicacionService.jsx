@@ -27,14 +27,10 @@ class UbicacionService {
         return { success: false, data: [], error: 'URL de API no configurada' };
       }
 
-      const response = await axios.get(`${BASE_URL}/localities/`);
-      let data = response.data?.results || response.data || [];
-      if (provinciaId) {
-        data = data.filter((loc) => {
-          const prov = loc.province?.id || loc.province;
-          return prov === provinciaId;
-        });
-      }
+      const response = await axios.get(`${BASE_URL}/localities/`, {
+        params: provinciaId ? { province: provinciaId, page_size: 100 } : { page_size: 100 }
+      });
+      const data = response.data?.results || response.data || [];
       return { success: true, data, status: response.status };
     } catch (error) {
       console.error('Error fetching localidades:', error);
@@ -50,14 +46,10 @@ class UbicacionService {
         return { success: false, data: [], error: 'URL de API no configurada' };
       }
 
-      const response = await axios.get(`${BASE_URL}/addresses/`);
-      let data = response.data?.results || response.data || [];
-      if (localidadId) {
-        data = data.filter((addr) => {
-          const loc = addr.locality?.id || addr.locality;
-          return loc === localidadId;
-        });
-      }
+      const response = await axios.get(`${BASE_URL}/addresses/`, {
+        params: localidadId ? { locality: localidadId, page_size: 100 } : { page_size: 100 }
+      });
+      const data = response.data?.results || response.data || [];
       return { success: true, data, status: response.status };
     } catch (error) {
       console.error('Error fetching direcciones:', error);
@@ -73,14 +65,10 @@ class UbicacionService {
         return { success: false, data: [], error: 'URL de API no configurada' };
       }
 
-      const response = await axios.get(`${BASE_URL}/zones/`);
-      let data = response.data?.results || response.data || [];
-      if (localidadId) {
-        data = data.filter((zone) => {
-          const loc = zone.locality?.id || zone.locality;
-          return loc === localidadId;
-        });
-      }
+      const response = await axios.get(`${BASE_URL}/zones/`, {
+        params: localidadId ? { locality: localidadId, page_size: 100 } : { page_size: 100 }
+      });
+      const data = response.data?.results || response.data || [];
       return { success: true, data, status: response.status };
     } catch (error) {
       console.error('Error fetching zonas:', error);

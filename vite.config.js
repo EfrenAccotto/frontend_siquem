@@ -10,4 +10,12 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  server: {
+  host: '0.0.0.0',   // ← CRÍTICO para Docker
+  port: 5173,
+  proxy: {
+    // '/api' : 'http://localhost:8000'  // proxy para desarrollo local
+    '/api': 'http://backend:8000'  // proxy interno entre contenedores
+    }
+  }
 })
