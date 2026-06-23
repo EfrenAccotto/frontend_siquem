@@ -167,10 +167,10 @@ const ListadoPesajesView = () => {
 
                         // Reutilizar lógica de filtrado cliente (o llamar al backend con filtros)
                         // Por simplicidad, llamamos getAll y filtramos (como estaba antes)
-                        const resp = await PedidoService.getAll();
+                        const resp = await PedidoService.getAllPages();
                         if (!mounted) return;
                         if (resp.success) {
-                            let list = resp.data?.results || resp.data || [];
+                            let list = resp.data || [];
                             // ... lógica de filtrado simple ...
                             if (filters.fechaDesde || filters.fechaHasta || filters.estado) {
                                 list = list.filter(p => {

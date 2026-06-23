@@ -276,7 +276,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
 
   const loadProductos = async () => {
     try {
-      const resp = await ProductoService.getAll({ page: 1, page_size: 60 });
+      const resp = await ProductoService.getAllPages();
       if (resp.success) {
         const lista = (resp.data || []).map((prod) => ({
           ...prod,

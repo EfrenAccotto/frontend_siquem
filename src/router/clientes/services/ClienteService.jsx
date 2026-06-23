@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { fetchPage } from '@/utils/fetchPage';
+import { fetchAllPages } from '@/utils/fetchAllPages';
 import { API_BASE_URL } from '../../../config/runtimeEnv';
 
 const BASE_URL = API_BASE_URL;
@@ -13,6 +14,22 @@ class ClienteService {
 
     try {
       const { data, pagination, status } = await fetchPage(baseUrl, query);
+      return { success: true, data, pagination, status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Error al obtener clientes',
+        status: error.response?.status || 500
+      };
+    }
+  }
+
+  static async getAllPages(params = {}) {
+    const baseUrl = `${CLIENTES_ENDPOINT}/`;
+    const query = { ordering: '-id', ...params };
+
+    try {
+      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
       return { success: true, data, pagination, status };
     } catch (error) {
       return {
