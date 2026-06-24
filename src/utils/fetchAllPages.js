@@ -3,7 +3,18 @@ import axios from 'axios';
 const resolveNextUrl = (nextUrl, baseUrl) => {
   if (!nextUrl) return null;
   try {
-    return new URL(nextUrl, baseUrl).toString();
+    const isAbsoluteBaseUrl = /^[a-z][a-z\d+.-]*:\/\//i.test(baseUrl);
+    const fallbackOrigin = globalThis.location?.origin || 'http://localhost';
+    const configuredBaseUrl = new URL(baseUrl, fallbackOrigin);
+    const resolvedUrl = new URL(nextUrl, configuredBaseUrl);
+
+    // DRF can build `next` with an internal host. Keep the configured API origin.
+    resolvedUrl.protocol = configuredBaseUrl.protocol;
+    resolvedUrl.hostname = configuredBaseUrl.hostname;
+    resolvedUrl.port = configuredBaseUrl.port;
+
+    if (isAbsoluteBaseUrl) return resolvedUrl.toString();
+    return `${resolvedUrl.pathname}${resolvedUrl.search}${resolvedUrl.hash}`;
   } catch {
     return nextUrl;
   }
@@ -21,8 +32,14 @@ export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
     pageSize: Number(params?.page_size) || 0
   };
   let status = 200;
+  const visitedUrls = new Set();
 
   while (nextUrl) {
+    if (visitedUrls.has(nextUrl)) {
+      throw new Error('La API devolvio un ciclo de paginacion');
+    }
+    visitedUrls.add(nextUrl);
+
     const response = await axios.get(
       nextUrl,
       isFirstRequest ? { ...config, params } : config

@@ -6,18 +6,22 @@ import PedidoService from '@/router/pedidos/services/PedidoService';
 import ProductoService from '@/router/productos/services/ProductoService';
 
 const mockFetchClientes = jest.fn();
+const mockClientes = [
+  { id: 5, first_name: 'Ana', last_name: 'Perez' },
+  { id: 6, first_name: 'Luis', last_name: 'Gomez' }
+];
 
 jest.mock('@/store/useClienteStore', () => ({
   __esModule: true,
-  default: () => ({ clientes: [], fetchClientes: mockFetchClientes })
+  default: () => ({ clientes: mockClientes, fetchClientes: mockFetchClientes })
 }));
 jest.mock('@/router/pedidos/services/PedidoService', () => ({
   __esModule: true,
-  default: { getAll: jest.fn(), getById: jest.fn() }
+  default: { getAllPages: jest.fn(), getById: jest.fn() }
 }));
 jest.mock('@/router/productos/services/ProductoService', () => ({
   __esModule: true,
-  default: { getAll: jest.fn() }
+  default: { getAllPages: jest.fn() }
 }));
 jest.mock('@/router/ventas/services/VentaService', () => ({
   __esModule: true,
@@ -41,6 +45,9 @@ describe('VentaForm order mode', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetchClientes.mockResolvedValue(mockClientes);
+    ProductoService.getAllPages.mockResolvedValue({ success: true, data: [] });
+    PedidoService.getAllPages.mockResolvedValue({ success: true, data: [] });
   });
 
   it('does not load catalogs or refetch the order and blocks a double submit', async () => {
@@ -62,9 +69,40 @@ describe('VentaForm order mode', () => {
     fireEvent.click(saveButton);
 
     expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        order_id: 42,
+        total_price: 20,
+        date: '2026-06-21',
+        payment_method: 'cash'
+      }),
+      expect.arrayContaining([
+        expect.objectContaining({
+          producto: expect.objectContaining({ id: 3 }),
+          cantidad: '2.000'
+        })
+      ])
+    );
     expect(mockFetchClientes).not.toHaveBeenCalled();
-    expect(ProductoService.getAll).not.toHaveBeenCalled();
-    expect(PedidoService.getAll).not.toHaveBeenCalled();
+    expect(ProductoService.getAllPages).not.toHaveBeenCalled();
+    expect(PedidoService.getAllPages).not.toHaveBeenCalled();
     expect(PedidoService.getById).not.toHaveBeenCalled();
+  });
+
+  it('loads complete catalogs when opened from sales CRUD', async () => {
+    render(
+      <VentaForm
+        visible
+        onHide={jest.fn()}
+        onSave={jest.fn()}
+        loading={false}
+      />
+    );
+
+    await waitFor(() => {
+      expect(mockFetchClientes).toHaveBeenCalledTimes(1);
+      expect(ProductoService.getAllPages).toHaveBeenCalledTimes(1);
+      expect(PedidoService.getAllPages).toHaveBeenCalledTimes(1);
+    });
   });
 });

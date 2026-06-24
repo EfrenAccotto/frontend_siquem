@@ -62,4 +62,78 @@ describe('fetchAllPages', () => {
     expect(result.data).toEqual([{ id: 2 }, { id: 1 }]);
     expect(result.pagination.count).toBe(2);
   });
+
+  it('detiene ciclos de paginacion invalidos', async () => {
+    axios.get.mockResolvedValue({
+      status: 200,
+      data: {
+        count: 2,
+        next: 'http://api.test/customer/',
+        previous: null,
+        results: [{ id: 1 }]
+      }
+    });
+
+    await expect(fetchAllPages('http://api.test/customer/')).rejects.toThrow(
+      'La API devolvio un ciclo de paginacion'
+    );
+    expect(axios.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('resuelve enlaces relativos cuando la API usa una ruta local', async () => {
+    axios.get
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          count: 2,
+          next: '?page=2',
+          previous: null,
+          results: [{ id: 2 }]
+        }
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          count: 2,
+          next: null,
+          previous: '?page=1',
+          results: [{ id: 1 }]
+        }
+      });
+
+    const result = await fetchAllPages('/api/v1/customer/');
+
+    expect(axios.get).toHaveBeenNthCalledWith(2, '/api/v1/customer/?page=2', {});
+    expect(result.data).toEqual([{ id: 2 }, { id: 1 }]);
+  });
+
+  it('mantiene el origen configurado si next usa un host interno', async () => {
+    axios.get
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          count: 2,
+          next: 'http://backend:8000/api/v1/customer/?page=2',
+          previous: null,
+          results: [{ id: 2 }]
+        }
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          count: 2,
+          next: null,
+          previous: null,
+          results: [{ id: 1 }]
+        }
+      });
+
+    await fetchAllPages('https://api.example.com/api/v1/customer/');
+
+    expect(axios.get).toHaveBeenNthCalledWith(
+      2,
+      'https://api.example.com/api/v1/customer/?page=2',
+      {}
+    );
+  });
 });

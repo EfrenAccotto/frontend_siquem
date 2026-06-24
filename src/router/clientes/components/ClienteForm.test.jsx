@@ -1,6 +1,6 @@
 import React from 'react';
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import ClienteForm from './ClienteForm';
 import UbicacionService from '../../ubicacion/services/UbicacionService';
@@ -58,7 +58,11 @@ jest.mock('primereact/dropdown', () => ({
   Dropdown: ({ value, options, onChange, placeholder, optionLabel, optionValue, ...props }) => (
     <select 
       value={value || ''} 
-      onChange={(e) => onChange && onChange({ value: e.target.value })}
+      onChange={(e) => {
+        const selected = options?.find((option) => String(optionValue ? option[optionValue] : option.value) === e.target.value);
+        const selectedValue = selected ? (optionValue ? selected[optionValue] : selected.value) : '';
+        onChange?.({ value: selectedValue });
+      }}
       data-testid={props['data-testid'] || 'dropdown'}
       {...props}
     >
@@ -283,16 +287,11 @@ describe('ClienteForm', () => {
       const nombreInput = screen.getByTestId('nombre');
       const apellidoInput = screen.getByTestId('apellido');
       const dniInput = screen.getByTestId('dni');
-      const calleInput = screen.getByPlaceholderText('Ej: Calle Principal');
-      const numeroInput = screen.getByPlaceholderText('Ej: 123');
 
       await act(async () => {
         fireEvent.change(nombreInput, { target: { value: 'Juan' } });
         fireEvent.change(apellidoInput, { target: { value: 'Pérez' } });
         fireEvent.change(dniInput, { target: { value: '12345678' } });
-        fireEvent.change(calleInput, { target: { value: 'Calle Test' } });
-        fireEvent.change(numeroInput, { target: { value: '123' } });
-        fireEvent.change(numeroInput, { target: { value: '123' } });
       });
 
       // Seleccionar provincia Córdoba
@@ -302,13 +301,18 @@ describe('ClienteForm', () => {
       });
 
       await waitFor(() => {
-        expect(UbicacionService.getLocalidades).toHaveBeenCalledWith('1');
+        expect(UbicacionService.getLocalidades).toHaveBeenCalledWith(1);
       });
 
       // Seleccionar localidad
       const localidadInput = screen.getByTestId('autocomplete');
       await act(async () => {
         fireEvent.change(localidadInput, { target: { value: localidad } });
+      });
+      await waitFor(() => {
+        expect(ClienteService.getZones).toHaveBeenCalledWith(
+          mockLocalidades.find((loc) => loc.name === localidad)?.id
+        );
       });
 
       // Seleccionar zona (según localidad)
@@ -319,6 +323,11 @@ describe('ClienteForm', () => {
           fireEvent.change(zonaDropdown, { target: { value: String(zonaMatch.id) } });
         });
       }
+
+      await act(async () => {
+        fireEvent.change(screen.getByPlaceholderText('Ej: Calle Principal'), { target: { value: 'Calle Test' } });
+        fireEvent.change(screen.getByPlaceholderText('Ej: 123'), { target: { value: '123' } });
+      });
 
       // Enviar formulario
       const submitButton = screen.getByText('Guardar');
@@ -368,7 +377,7 @@ describe('ClienteForm', () => {
       });
 
       await waitFor(() => {
-        expect(UbicacionService.getLocalidades).toHaveBeenCalledWith('1');
+        expect(UbicacionService.getLocalidades).toHaveBeenCalledWith(1);
       });
     });
 
@@ -633,10 +642,13 @@ describe('ClienteForm', () => {
       });
 
       await act(async () => {
-        // Seleccionar localidad
         fireEvent.change(screen.getByTestId('autocomplete'), { target: { value: 'Las Higueras' } });
+      });
+      await waitFor(() => {
+        expect(ClienteService.getZones).toHaveBeenCalledWith(2);
+      });
 
-        // Seleccionar zona
+      await act(async () => {
         const zonaSeleccionada = zonas.find((z) => z.name === 'Las Higueras');
         if (zonaSeleccionada) {
           fireEvent.change(screen.getAllByTestId('dropdown')[1], { target: { value: String(zonaSeleccionada.id) } });

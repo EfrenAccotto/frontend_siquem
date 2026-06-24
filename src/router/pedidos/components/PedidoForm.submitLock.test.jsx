@@ -20,7 +20,7 @@ jest.mock('@/store/useClienteStore', () => {
 });
 jest.mock('@/router/productos/services/ProductoService', () => ({
   __esModule: true,
-  default: { getAll: jest.fn() }
+  default: { getAllPages: jest.fn() }
 }));
 jest.mock('@/router/ubicacion/services/UbicacionService', () => ({
   __esModule: true,
@@ -38,7 +38,7 @@ jest.mock('@/router/clientes/components/ClienteForm', () => ({
 describe('PedidoForm submit lock', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    ProductoService.getAll.mockResolvedValue({
+    ProductoService.getAllPages.mockResolvedValue({
       success: true,
       data: [{ id: 3, name: 'Yerba', price: '10.00', stock_unit: 'unit' }]
     });
@@ -72,5 +72,7 @@ describe('PedidoForm submit lock', () => {
     fireEvent.click(saveButton);
 
     expect(onSave).toHaveBeenCalledTimes(1);
+    expect(mockFetchClientes).toHaveBeenCalledTimes(1);
+    expect(ProductoService.getAllPages).toHaveBeenCalledTimes(1);
   });
 });

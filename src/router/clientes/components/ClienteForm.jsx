@@ -342,7 +342,6 @@ const ClienteForm = ({ visible, cliente, onHide, onSave, loading }) => {
           locality_id: localityId || null
         }
       };
-      console.log('Submitting form data:', dataToSave);
       onSave(dataToSave);
     }
   };

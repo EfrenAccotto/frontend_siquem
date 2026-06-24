@@ -9,7 +9,7 @@ const ClienteRouter = lazy(() => import('./clientes/ClienteRouter'));
 const ProductoRouter = lazy(() => import('./productos/ProductoRouter'));
 const VentaRouter = lazy(() => import('./ventas/VentaRouter'));
 const PedidoRouter = lazy(() => import('./pedidos/PedidoRouter'));
-const InicioRouter = lazy(() => import('./inicio/InicioRouter'));
+const InicioView = lazy(() => import('./inicio/views/InicioView'));
 const ReporteRouter = lazy(() => import('./reportes/ReporteRouter'));
 const ListadoPesajesView = lazy(() => import('./pedidos/views/ListadoPesajesView'));
 
@@ -32,7 +32,7 @@ const AppRouter = () => (
               <Sidebar />
               <main className="flex-1 p-4">
                 <Routes>
-                  <Route path="/" element={<InicioRouter />} />
+                  <Route path="/" element={<InicioView />} />
                   <Route path="/clientes/*" element={<ClienteRouter />} />
                   <Route path="/productos/*" element={<ProductoRouter />} />
                   <Route path="/ventas/*" element={<VentaRouter />} />

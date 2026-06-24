@@ -1,11 +1,18 @@
 import React from 'react';
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ClienteForm from './ClienteForm';
 import UbicacionService from '../../ubicacion/services/UbicacionService';
 import ClienteService from '../services/ClienteService';
 
-jest.mock('../../ubicacion/services/UbicacionService');
+jest.mock('../../ubicacion/services/UbicacionService', () => ({
+  __esModule: true,
+  default: {
+    getProvincias: jest.fn(),
+    getLocalidades: jest.fn()
+  }
+}));
 jest.mock('../services/ClienteService', () => ({
   __esModule: true,
   default: {
@@ -47,7 +54,11 @@ jest.mock('primereact/dropdown', () => ({
   Dropdown: ({ value, options, onChange, placeholder, optionLabel, optionValue }) => (
     <select 
       value={value || ''} 
-      onChange={(e) => onChange && onChange({ value: e.target.value })}
+      onChange={(e) => {
+        const selected = options?.find((option) => String(optionValue ? option[optionValue] : option.value) === e.target.value);
+        const selectedValue = selected ? (optionValue ? selected[optionValue] : selected.value) : '';
+        onChange?.({ value: selectedValue });
+      }}
       data-testid="dropdown"
     >
       <option value="">{placeholder}</option>
@@ -115,6 +126,11 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
       fireEvent.change(screen.getByTestId('nombre'), { target: { value: 'Test' } });
       fireEvent.change(screen.getByTestId('apellido'), { target: { value: 'Usuario' } });
       fireEvent.change(screen.getByTestId('dni'), { target: { value: '12345678' } });
+    });
+  };
+
+  const fillAddress = async () => {
+    await act(async () => {
       fireEvent.change(screen.getByPlaceholderText('Ej: Calle Principal'), { target: { value: 'Test St' } });
       fireEvent.change(screen.getByPlaceholderText('Ej: 123'), { target: { value: '123' } });
     });
@@ -126,7 +142,7 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
       fireEvent.change(provinciaDropdown, { target: { value: '1' } });
     });
     await waitFor(() => {
-      expect(UbicacionService.getLocalidades).toHaveBeenCalledWith('1');
+      expect(UbicacionService.getLocalidades).toHaveBeenCalledWith(1);
     });
   };
 
@@ -177,9 +193,10 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
         if (zoneOption) {
           await selectZona(zoneOption.id);
         }
+        await fillAddress();
 
         // Verificar que la localidad esté habilitada después de seleccionar provincia
-        expect(localidadInput).not.toBeDisabled();
+        expect(screen.getByTestId('autocomplete')).not.toBeDisabled();
 
         // Enviar formulario
         const submitButton = screen.getByText('Guardar');
@@ -189,7 +206,7 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
 
         // Verificar que se llamó el servicio de localidades si se esperaba
         if (expectedLocalityCall) {
-          expect(UbicacionService.getLocalidades).toHaveBeenCalledWith('1');
+          expect(UbicacionService.getLocalidades).toHaveBeenCalledWith(1);
         }
 
         // Verificar que se guardó con los datos correctos
@@ -224,6 +241,7 @@ describe('ClienteForm - Pruebas de Integración Específicas', () => {
       if (zonaSeleccionada) {
         await selectZona(zonaSeleccionada.id);
       }
+      await fillAddress();
 
       const submitButton = screen.getByText('Guardar');
       await act(async () => {
