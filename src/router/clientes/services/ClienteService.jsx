@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { fetchAllPages } from '@/utils/fetchAllPages';
 import { fetchPage } from '@/utils/fetchPage';
+import { fetchAllPages } from '@/utils/fetchAllPages';
 import { API_BASE_URL } from '../../../config/runtimeEnv';
 
 const BASE_URL = API_BASE_URL;
@@ -34,7 +35,7 @@ class ClienteService {
     } catch (error) {
       return {
         success: false,
-        error: error.response?.data?.message || error.message || 'Error al obtener clientes',
+        error: error.response?.data?.message || 'Error al obtener clientes',
         status: error.response?.status || 500
       };
     }

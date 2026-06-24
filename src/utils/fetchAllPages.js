@@ -1,32 +1,47 @@
 import axios from 'axios';
 
+const resolveNextUrl = (nextUrl, baseUrl) => {
+  if (!nextUrl) return null;
+  try {
+    return new URL(nextUrl, baseUrl).toString();
+  } catch {
+    return nextUrl;
+  }
+};
+
 export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
   let nextUrl = baseUrl;
   let isFirstRequest = true;
   let items = [];
-  let pagination = { count: 0, next: null, previous: null };
+  let pagination = {
+    count: 0,
+    next: null,
+    previous: null,
+    page: Number(params?.page) || 1,
+    pageSize: Number(params?.page_size) || 0
+  };
   let status = 200;
-  const visitedUrls = new Set();
 
   while (nextUrl) {
-    if (visitedUrls.has(nextUrl)) {
-      throw new Error('La API devolvio un ciclo de paginacion');
-    }
-    visitedUrls.add(nextUrl);
-
-    const requestConfig = isFirstRequest ? { ...config, params } : config;
-    const response = await axios.get(nextUrl, requestConfig);
-    const payload = response.data;
+    const response = await axios.get(
+      nextUrl,
+      isFirstRequest ? { ...config, params } : config
+    );
     status = response.status;
+    const payload = response.data;
 
     if (Array.isArray(payload)) {
-      items = items.concat(payload);
-      pagination = {
-        count: items.length,
-        next: null,
-        previous: null
+      return {
+        data: payload,
+        pagination: {
+          count: payload.length,
+          next: null,
+          previous: null,
+          page: 1,
+          pageSize: payload.length
+        },
+        status
       };
-      break;
     }
 
     const pageItems = Array.isArray(payload?.results) ? payload.results : [];
@@ -34,12 +49,20 @@ export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
     pagination = {
       count: Number(payload?.count) || items.length,
       next: payload?.next ?? null,
-      previous: payload?.previous ?? null
+      previous: payload?.previous ?? null,
+      page: Number(params?.page) || 1,
+      pageSize: Number(params?.page_size) || items.length
     };
 
-    nextUrl = pagination.next;
+    if (!payload?.next) break;
+
+    nextUrl = resolveNextUrl(payload.next, baseUrl);
     isFirstRequest = false;
   }
 
-  return { data: items, pagination, status };
+  return {
+    data: items,
+    pagination,
+    status
+  };
 };

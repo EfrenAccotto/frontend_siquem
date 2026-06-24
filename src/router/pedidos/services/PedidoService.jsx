@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { fetchPage } from '@/utils/fetchPage';
+import { fetchAllPages } from '@/utils/fetchAllPages';
 import { API_BASE_URL } from '../../../config/runtimeEnv';
 
 const BASE_URL = API_BASE_URL;
@@ -12,6 +13,22 @@ class PedidoService {
 
     try {
       const { data, pagination, status } = await fetchPage(baseUrl, query, options);
+      return { success: true, data, pagination, status };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data || 'Error al obtener pedidos',
+        status: error.response?.status || 500
+      };
+    }
+  }
+
+  static async getAllPages(params = {}, options = {}) {
+    const baseUrl = `${PEDIDOS_ENDPOINT}/`;
+    const query = { ordering: '-id', ...params };
+
+    try {
+      const { data, pagination, status } = await fetchAllPages(baseUrl, query, options);
       return { success: true, data, pagination, status };
     } catch (error) {
       return {
