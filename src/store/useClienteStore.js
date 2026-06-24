@@ -19,7 +19,7 @@ const useClienteStore = create((set, getState) => ({
 
     set({ loading: true, error: null });
     try {
-      const response = await ClienteService.getAll({ page: 1, page_size: 60 });
+      const response = await ClienteService.getAllPages();
       if (!response?.success) {
         set({ error: response?.error || 'Error al obtener clientes', loading: false });
         return [];

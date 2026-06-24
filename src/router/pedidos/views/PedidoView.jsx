@@ -15,6 +15,7 @@ import VentaForm from '@/router/ventas/components/VentaForm';
 import { confirmDialog } from 'primereact/confirmdialog';
 import { extractStockUnit } from '@/utils/unitParser';
 import { normalizePaymentMethod, formatPaymentMethod } from '@/utils/paymentMethod';
+import { flattenOrdersByZone, getPedidoTotal } from '../utils/hojaRuta';
 
 // Estados soportados por backend
 const STATUS_MAP = {
@@ -128,20 +129,6 @@ const toDateKey = (value) => {
   }
 };
 
-const getPedidoTotal = (pedidoItem) => {
-  const totalRaw = pedidoItem?.total_price ?? pedidoItem?.total;
-  const totalNum = Number(totalRaw);
-  if (Number.isFinite(totalNum) && totalNum > 0) return totalNum;
-
-  const detailList = pedidoItem?.detail || pedidoItem?.detalles || pedidoItem?.items || [];
-  return (detailList || []).reduce((acc, d) => {
-    const qty = Number(d.quantity ?? d.cantidad ?? 0) || 0;
-    const price = Number(d.product_price ?? d.price ?? d.product?.price ?? d.producto?.price ?? 0) || 0;
-    const subtotal = Number(d.subtotal);
-    return acc + (Number.isFinite(subtotal) ? subtotal : (qty * price));
-  }, 0);
-};
-
 const formatCurrency = (value) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(value) || 0);
 
@@ -182,6 +169,9 @@ const PedidoView = () => {
   const [fechaDesdeHoja, setFechaDesdeHoja] = useState(null);
   const [fechaHastaHoja, setFechaHastaHoja] = useState(null);
   const [estadoHojaRuta, setEstadoHojaRuta] = useState(null);
+  const [hojaRutaReport, setHojaRutaReport] = useState({});
+  const [loadingHojaRutaPreview, setLoadingHojaRutaPreview] = useState(false);
+  const [hojaRutaPreviewError, setHojaRutaPreviewError] = useState('');
 
   // Estados para Modal de Pesajes
   const [showPesajeDialog, setShowPesajeDialog] = useState(false);
@@ -205,6 +195,7 @@ const PedidoView = () => {
   const listAbortRef = useRef(null);
   const saleOpenSequenceRef = useRef(0);
   const saleOpenAbortRef = useRef(null);
+  const hojaRutaPreviewSequenceRef = useRef(0);
 
   useEffect(() => {
     fetchClientes();
@@ -218,6 +209,41 @@ const PedidoView = () => {
 
     return () => window.clearTimeout(timer);
   }, [filters.search]);
+
+  useEffect(() => {
+    if (!showHojaRutaDialog) {
+      setLoadingHojaRutaPreview(false);
+      return undefined;
+    }
+
+    const requestSequence = ++hojaRutaPreviewSequenceRef.current;
+    const controller = new AbortController();
+    setLoadingHojaRutaPreview(true);
+    setHojaRutaPreviewError('');
+    const timer = window.setTimeout(async () => {
+      const response = await ReporteService.getOrdersByZone({
+        dateFrom: toDateKey(fechaDesdeHoja),
+        dateTo: toDateKey(fechaHastaHoja),
+        status: estadoHojaRuta || null
+      }, { signal: controller.signal });
+
+      if (requestSequence !== hojaRutaPreviewSequenceRef.current) return;
+
+      if (response.success) {
+        setHojaRutaReport(response.data || {});
+      } else {
+        setHojaRutaReport({});
+        setHojaRutaPreviewError(response.error || 'No se pudo calcular el resumen');
+      }
+      setLoadingHojaRutaPreview(false);
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+      hojaRutaPreviewSequenceRef.current += 1;
+    };
+  }, [showHojaRutaDialog, fechaDesdeHoja, fechaHastaHoja, estadoHojaRuta]);
 
   const loadPedidos = async ({
     page = pagination.page,
@@ -750,20 +776,9 @@ const PedidoView = () => {
     }
   ], []);
 
-  const dateFromHojaKey = useMemo(() => toDateKey(fechaDesdeHoja), [fechaDesdeHoja]);
-  const dateToHojaKey = useMemo(() => toDateKey(fechaHastaHoja), [fechaHastaHoja]);
   const pedidosHojaRuta = useMemo(
-    () => (
-      (pedidos || []).filter((p) => {
-        if (estadoHojaRuta && p.state !== estadoHojaRuta) return false;
-        const pedidoDate = toDateKey(p.date);
-        if (!pedidoDate) return true;
-        if (dateFromHojaKey && pedidoDate < dateFromHojaKey) return false;
-        if (dateToHojaKey && pedidoDate > dateToHojaKey) return false;
-        return true;
-      })
-    ),
-    [pedidos, estadoHojaRuta, dateFromHojaKey, dateToHojaKey]
+    () => flattenOrdersByZone(hojaRutaReport),
+    [hojaRutaReport]
   );
   const totalGeneralHojaRuta = useMemo(
     () => pedidosHojaRuta.reduce((acc, p) => acc + getPedidoTotal(p), 0),
@@ -1001,13 +1016,14 @@ const PedidoView = () => {
           <div className="col-12">
             <div className="p-3 surface-100 border-round">
               <div className="flex justify-content-between align-items-center mb-2">
-                <span className="font-bold">Pedidos incluidos: {pedidosHojaRuta.length}</span>
-                <span className="font-bold">Total general: {formatCurrency(totalGeneralHojaRuta)}</span>
+                <span className="font-bold">Pedidos incluidos: {loadingHojaRutaPreview ? '...' : pedidosHojaRuta.length}</span>
+                <span className="font-bold">Total general: {loadingHojaRutaPreview ? 'Calculando...' : formatCurrency(totalGeneralHojaRuta)}</span>
               </div>
+              {hojaRutaPreviewError && <small className="p-error block mb-2">{hojaRutaPreviewError}</small>}
               <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
                 {(pedidosHojaRuta || []).map((p) => {
                   const paymentRaw = p.payment_method || p.paymentMethod;
-                  const paymentLabel = paymentRaw ? formatPaymentMethod(paymentRaw) : '-';
+                  const paymentLabel = p.payment_method_display || (paymentRaw ? formatPaymentMethod(paymentRaw) : '-');
                   return (
                     <div key={`hoja-ruta-${p.id}`} className="flex justify-content-between align-items-center py-2 border-bottom-1 surface-border">
                       <span>Pedido #{p.id}</span>
@@ -1016,7 +1032,7 @@ const PedidoView = () => {
                     </div>
                   );
                 })}
-                {!pedidosHojaRuta.length && (
+                {!loadingHojaRutaPreview && !hojaRutaPreviewError && !pedidosHojaRuta.length && (
                   <small className="text-500">No hay pedidos para los filtros seleccionados.</small>
                 )}
               </div>

@@ -154,6 +154,32 @@ class ReporteService {
       };
     }
   }
+
+  static async getOrdersByZone({ dateFrom = null, dateTo = null, status = null } = {}, options = {}) {
+    try {
+      const params = {};
+      if (dateFrom) params.date_from = dateFrom;
+      if (dateTo) params.date_to = dateTo;
+      if (status) params.status = status;
+
+      const response = await axios.get(`${REPORTES_ENDPOINT}/orders-by-zone/`, {
+        ...options,
+        params
+      });
+
+      return {
+        success: true,
+        data: response.data?.data || {},
+        status: response.status
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message || 'Error al obtener el resumen de la hoja de ruta',
+        status: error.response?.status || 500
+      };
+    }
+  }
 }
 
 export default ReporteService;

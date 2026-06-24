@@ -379,7 +379,7 @@ const PedidoForm = ({ visible, onHide, onSave, loading, pedido = null }) => {
       const response = await ClienteService.create(clientePayload);
       const clienteVerificado = await verifyCreatedCliente(response);
 
-      await fetchClientes();
+      await fetchClientes({ force: true });
       const clientesActualizados = useClienteStore.getState()?.clientes || [];
       const clienteCreado = clientesActualizados.find((cliente) => cliente.id === clienteVerificado.id) || clienteVerificado;
 
