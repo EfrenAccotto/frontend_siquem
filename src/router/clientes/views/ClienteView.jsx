@@ -3,6 +3,7 @@ import ActionButtons from '../../../components/layout/ActionButtons';
 import { useEffect, useState, useRef } from 'react';
 import ClienteService from '../services/ClienteService';
 import ClienteForm from '../components/ClienteForm';
+import useClienteStore from '../../../store/useClienteStore';
 import { Toast } from 'primereact/toast';
 import { confirmDialog } from 'primereact/confirmdialog';
 
@@ -162,11 +163,13 @@ const ClienteView = () => {
           throw new Error(getErrorDetail(response.error, 'No se pudo actualizar el cliente'));
         }
 
+        useClienteStore.getState().upsertCliente(response.data);
         await loadClientes();
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente actualizado', life: 3000 });
       } else {
         const response = await ClienteService.create(formData);
-        await verifyCreatedCliente(response);
+        const clienteCreado = await verifyCreatedCliente(response);
+        useClienteStore.getState().upsertCliente(clienteCreado);
         setPagination((prev) => ({ ...prev, page: 1 }));
         await loadClientes({ page: 1 });
         toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente guardado correctamente', life: 3000 });
@@ -193,6 +196,7 @@ const ClienteView = () => {
         throw new Error(getErrorDetail(response.error, 'No se pudo eliminar el cliente'));
       }
 
+      useClienteStore.getState().removeCliente(selectedCliente.id);
       await loadClientes();
       setSelectedCliente(null);
       toast.current?.show({ severity: 'success', summary: 'Exito', detail: 'Cliente eliminado', life: 3000 });

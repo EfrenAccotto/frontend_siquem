@@ -202,9 +202,7 @@ const VentaForm = ({ visible, onHide, onSave, loading, venta = null, pedido = nu
         if (!clienteData?.id) return;
         const exists = (clientesList || []).some((clienteItem) => clienteItem.id === clienteData.id);
         if (!exists) {
-          useClienteStore.setState((state) => ({
-            clientes: [...(state.clientes || []), clienteData]
-          }));
+          useClienteStore.getState().upsertCliente(clienteData);
         }
       };
 

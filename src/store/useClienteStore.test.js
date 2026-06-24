@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import ClienteService from '../router/clientes/services/ClienteService';
-import useClienteStore from './useClienteStore';
+import useClienteStore, {
+  CLIENTES_CACHE_STORAGE_KEY,
+  CLIENTES_CACHE_TTL_MS
+} from './useClienteStore';
 
 jest.mock('../router/clientes/services/ClienteService', () => ({
   __esModule: true,
@@ -17,7 +20,8 @@ describe('useClienteStore', () => {
       clienteActual: null,
       loading: false,
       error: null,
-      loaded: false
+      loaded: false,
+      lastFetchedAt: 0
     });
   });
 
@@ -35,6 +39,90 @@ describe('useClienteStore', () => {
       clientes: [{ id: 3 }, { id: 2 }, { id: 1 }],
       loaded: true,
       loading: false
+    });
+  });
+
+  it('reutiliza el cache vigente sin consultar nuevamente la API', async () => {
+    const clientes = [{ id: 2 }, { id: 1 }];
+    useClienteStore.setState({
+      clientes,
+      loaded: true,
+      lastFetchedAt: Date.now()
+    });
+
+    const result = await useClienteStore.getState().fetchClientes();
+
+    expect(result).toEqual(clientes);
+    expect(ClienteService.getAllPages).not.toHaveBeenCalled();
+  });
+
+  it('actualiza el cache cuando vencio', async () => {
+    useClienteStore.setState({
+      clientes: [{ id: 1 }],
+      loaded: true,
+      lastFetchedAt: Date.now() - CLIENTES_CACHE_TTL_MS - 1
+    });
+    ClienteService.getAllPages.mockResolvedValue({
+      success: true,
+      data: [{ id: 2 }]
+    });
+
+    const result = await useClienteStore.getState().fetchClientes();
+
+    expect(ClienteService.getAllPages).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([{ id: 2 }]);
+  });
+
+  it('conserva los clientes vencidos si la actualizacion falla', async () => {
+    const clientes = [{ id: 1 }];
+    useClienteStore.setState({
+      clientes,
+      loaded: true,
+      lastFetchedAt: Date.now() - CLIENTES_CACHE_TTL_MS - 1
+    });
+    ClienteService.getAllPages.mockResolvedValue({
+      success: false,
+      error: 'API no disponible'
+    });
+
+    const result = await useClienteStore.getState().fetchClientes();
+
+    expect(result).toEqual(clientes);
+    expect(useClienteStore.getState().error).toBe('API no disponible');
+  });
+
+  it('persiste solamente el catalogo y su fecha de actualizacion', () => {
+    useClienteStore.setState({
+      clientes: [{ id: 7 }],
+      loaded: true,
+      lastFetchedAt: 123,
+      clienteActual: { id: 99 },
+      loading: true,
+      error: 'temporal'
+    });
+
+    const cached = JSON.parse(localStorage.getItem(CLIENTES_CACHE_STORAGE_KEY));
+
+    expect(cached.state).toEqual({
+      clientes: [{ id: 7 }],
+      loaded: true,
+      lastFetchedAt: 123
+    });
+  });
+
+  it('no marca como completo un catalogo parcial al agregar un cliente', () => {
+    useClienteStore.setState({
+      clientes: [],
+      loaded: false,
+      lastFetchedAt: 0
+    });
+
+    useClienteStore.getState().upsertCliente({ id: 8, first_name: 'Ana' });
+
+    expect(useClienteStore.getState()).toMatchObject({
+      clientes: [{ id: 8, first_name: 'Ana' }],
+      loaded: false,
+      lastFetchedAt: 0
     });
   });
 });
