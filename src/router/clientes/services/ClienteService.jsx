@@ -24,12 +24,18 @@ class ClienteService {
     }
   }
 
-  static async getAllPages(params = {}) {
+  static async getAllPages(params = {}, options = {}) {
     const baseUrl = `${CLIENTES_ENDPOINT}/`;
     const query = { ordering: '-id', ...params };
+    const { onPage, ...config } = options;
 
     try {
-      const { data, pagination, status } = await fetchAllPages(baseUrl, query);
+      const { data, pagination, status } = await fetchAllPages(
+        baseUrl,
+        query,
+        config,
+        { onPage }
+      );
       return { success: true, data, pagination, status };
     } catch (error) {
       return {

@@ -53,6 +53,42 @@ describe('fetchAllPages', () => {
     expect(result.pagination).toMatchObject({ count: 5, next: null });
   });
 
+  it('notifica el acumulado despues de cada pagina', async () => {
+    const onPage = jest.fn();
+    axios.get
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          count: 3,
+          next: '?page=2',
+          previous: null,
+          results: [{ id: 3 }, { id: 2 }]
+        }
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          count: 3,
+          next: null,
+          previous: '?page=1',
+          results: [{ id: 1 }]
+        }
+      });
+
+    await fetchAllPages('/api/v1/customer/', {}, {}, { onPage });
+
+    expect(onPage).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      data: [{ id: 3 }, { id: 2 }],
+      pageData: [{ id: 3 }, { id: 2 }],
+      isComplete: false
+    }));
+    expect(onPage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      data: [{ id: 3 }, { id: 2 }, { id: 1 }],
+      pageData: [{ id: 1 }],
+      isComplete: true
+    }));
+  });
+
   it('mantiene compatibilidad con endpoints no paginados', async () => {
     axios.get.mockResolvedValue({ status: 200, data: [{ id: 2 }, { id: 1 }] });
 

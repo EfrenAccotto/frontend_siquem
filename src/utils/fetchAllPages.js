@@ -20,7 +20,8 @@ const resolveNextUrl = (nextUrl, baseUrl) => {
   }
 };
 
-export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
+export const fetchAllPages = async (baseUrl, params = {}, config = {}, callbacks = {}) => {
+  const { onPage } = callbacks;
   let nextUrl = baseUrl;
   let isFirstRequest = true;
   let items = [];
@@ -48,7 +49,7 @@ export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
     const payload = response.data;
 
     if (Array.isArray(payload)) {
-      return {
+      const result = {
         data: payload,
         pagination: {
           count: payload.length,
@@ -59,6 +60,8 @@ export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
         },
         status
       };
+      onPage?.({ ...result, pageData: payload, isComplete: true });
+      return result;
     }
 
     const pageItems = Array.isArray(payload?.results) ? payload.results : [];
@@ -70,6 +73,14 @@ export const fetchAllPages = async (baseUrl, params = {}, config = {}) => {
       page: Number(params?.page) || 1,
       pageSize: Number(params?.page_size) || items.length
     };
+
+    onPage?.({
+      data: [...items],
+      pageData: pageItems,
+      pagination: { ...pagination },
+      status,
+      isComplete: !payload?.next
+    });
 
     if (!payload?.next) break;
 

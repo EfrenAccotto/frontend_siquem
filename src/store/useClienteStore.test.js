@@ -56,7 +56,7 @@ describe('useClienteStore', () => {
     expect(ClienteService.getAllPages).not.toHaveBeenCalled();
   });
 
-  it('actualiza el cache cuando vencio', async () => {
+  it('devuelve el cache vencido de inmediato y lo actualiza en segundo plano', async () => {
     useClienteStore.setState({
       clientes: [{ id: 1 }],
       loaded: true,
@@ -70,7 +70,40 @@ describe('useClienteStore', () => {
     const result = await useClienteStore.getState().fetchClientes();
 
     expect(ClienteService.getAllPages).toHaveBeenCalledTimes(1);
-    expect(result).toEqual([{ id: 2 }]);
+    expect(result).toEqual([{ id: 1 }]);
+    await Promise.resolve();
+    expect(useClienteStore.getState().clientes).toEqual([{ id: 2 }]);
+  });
+
+  it('publica la primera pagina antes de completar el catalogo', async () => {
+    let finishRequest;
+    ClienteService.getAllPages.mockImplementation((_params, { onPage }) => {
+      onPage({ data: [{ id: 3 }, { id: 2 }] });
+      return new Promise((resolve) => {
+        finishRequest = () => resolve({
+          success: true,
+          data: [{ id: 3 }, { id: 2 }, { id: 1 }]
+        });
+      });
+    });
+
+    const firstPage = await useClienteStore.getState().fetchClientes();
+
+    expect(firstPage).toEqual([{ id: 3 }, { id: 2 }]);
+    expect(useClienteStore.getState()).toMatchObject({
+      clientes: [{ id: 3 }, { id: 2 }],
+      loaded: false,
+      loading: true
+    });
+
+    finishRequest();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(useClienteStore.getState()).toMatchObject({
+      clientes: [{ id: 3 }, { id: 2 }, { id: 1 }],
+      loaded: true,
+      loading: false
+    });
   });
 
   it('conserva los clientes vencidos si la actualizacion falla', async () => {

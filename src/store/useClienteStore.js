@@ -15,6 +15,7 @@ const getResponseError = (response, fallback) => {
 };
 
 let fetchClientesPromise = null;
+let firstPageReadyPromise = null;
 
 const useClienteStore = create(
   persist(
@@ -29,25 +30,50 @@ const useClienteStore = create(
       fetchClientes: async ({ force = false } = {}) => {
         const { loaded, clientes, lastFetchedAt } = getState();
         const cacheIsFresh = loaded && Date.now() - lastFetchedAt < CLIENTES_CACHE_TTL_MS;
+        const hasVisibleClientes = Array.isArray(clientes) && clientes.length > 0;
 
         if (!force && cacheIsFresh) {
           return clientes;
         }
 
         if (fetchClientesPromise) {
-          return fetchClientesPromise;
+          return hasVisibleClientes ? clientes : firstPageReadyPromise;
         }
 
         set({ loading: true, error: null });
+        let resolveFirstPage;
+        const firstPageReady = new Promise((resolve) => {
+          resolveFirstPage = resolve;
+        });
+        firstPageReadyPromise = firstPageReady;
+        let firstPageResolved = false;
+        const resolveAvailableClientes = (nextClientes) => {
+          if (firstPageResolved) return;
+          firstPageResolved = true;
+          resolveFirstPage(nextClientes);
+        };
+
         fetchClientesPromise = (async () => {
           try {
-            const response = await ClienteService.getAllPages();
+            const response = await ClienteService.getAllPages({}, {
+              onPage: ({ data }) => {
+                const partial = Array.isArray(data) ? sortClientesByIdDesc(data) : [];
+
+                // Una cache completa vencida sigue siendo mas util que una pagina parcial.
+                if (!loaded) {
+                  set({ clientes: partial, loading: true, loaded: false });
+                }
+                resolveAvailableClientes(loaded ? getState().clientes : partial);
+              }
+            });
             if (!response?.success) {
               set({
                 error: getResponseError(response, 'Error al obtener clientes'),
                 loading: false
               });
-              return getState().clientes;
+              const currentClientes = getState().clientes;
+              resolveAvailableClientes(currentClientes);
+              return currentClientes;
             }
 
             const list = response?.data || [];
@@ -58,16 +84,22 @@ const useClienteStore = create(
               loaded: true,
               lastFetchedAt: Date.now()
             });
+            resolveAvailableClientes(sorted);
             return sorted;
           } catch (error) {
             set({ error: error.message, loading: false });
-            return getState().clientes;
+            const currentClientes = getState().clientes;
+            resolveAvailableClientes(currentClientes);
+            return currentClientes;
           } finally {
             fetchClientesPromise = null;
+            firstPageReadyPromise = null;
           }
         })();
 
-        return fetchClientesPromise;
+        // Con datos previos, refresca en segundo plano. En la primera carga,
+        // espera solamente la primera pagina, no el catalogo completo.
+        return hasVisibleClientes ? clientes : firstPageReady;
       },
 
       upsertCliente: (cliente) => {
